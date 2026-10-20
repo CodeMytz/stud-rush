@@ -14,7 +14,7 @@
     })();
   </script>
   <title>Stud Rush | Buy STUD on Sepolia</title>
-  <meta name="description" content="A three-button STUD shop on Ethereum Sepolia. Pick the best bonus before it shrinks and before the button locks.">
+  <meta name="description" content="A STUD shop on Ethereum Sepolia with twelve options. Use compound interest (salikti procenti) to find the best bonus before it shrinks and before the option locks.">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -41,14 +41,54 @@
     <section class="card intro">
       <h1>Stud Rush</h1>
       <p>
-        Buy STUD with Sepolia ETH. Every pack is <b>100 STUD for 0.001 ETH</b>. Pick a button and you get a
-        <b>bonus on top</b>. The bonus shrinks with every purchase, and after anyone buys, that button
-        <b>locks for every player</b>. Choose between a big bonus that locks fast and a small one that waits longer.
+        Buy STUD with Sepolia ETH. Every pack is <b>100 STUD for 0.001 ETH</b>. Three tiers, <b>four options in each</b>.
+        Every option pays a bonus built with <b>compound interest (salikti procenti)</b>: the pack grows by a rate
+        for a number of rounds, then a flat fee is taken off. The cards show only the rate, the rounds and the fee.
+        <b>You work out which option pays the most.</b>
+      </p>
+      <p>
+        The rate shrinks with every purchase, and after anyone buys, that option <b>locks for every player</b>,
+        so the best answer changes while you calculate.
       </p>
       <p class="small muted">
         Ethereum Sepolia test network only. Test ETH has no value.
         <span id="links"></span>
       </p>
+    </section>
+
+    <section class="card mathcard">
+      <div class="boardhead">
+        <h2>Math corner: salikti procenti</h2>
+        <span class="badge" title="Counted after each purchase you make">Smart picks: <b id="stScore">-</b></span>
+      </div>
+      <div class="mathgrid">
+        <div>
+          <p class="formula">S = K &middot; (1 + r)<sup>n</sup></p>
+          <p class="small muted" style="margin-top:0">
+            K is the start amount (100 STUD), r is the rate per round as a decimal (3% is 0.03),
+            n is the number of rounds. Each round adds interest on the interest of the rounds before it.
+          </p>
+          <p class="small">
+            <b>Bonus = S &minus; 100 &minus; fee.</b><br>
+            Example: 3.00% for 4 rounds with a 0.50 STUD fee.<br>
+            S = 100 &middot; 1.03<sup>4</sup> = 112.5509, so the bonus is 12.5509 &minus; 0.50 = <b>12.0509 STUD</b>.
+            Adding 3% four times (12%) is simple interest and gives the wrong answer.
+          </p>
+        </div>
+        <div class="calc">
+          <h3>Calculator (practice with any numbers)</h3>
+          <div class="calcrow">
+            <label>Rate % per round<input id="cRate" type="number" inputmode="decimal" min="0" step="0.01" value="3"></label>
+            <label>Rounds<input id="cRounds" type="number" inputmode="numeric" min="1" max="30" step="1" value="4"></label>
+            <label>Fee (STUD)<input id="cFee" type="number" inputmode="decimal" min="0" step="0.01" value="0.5"></label>
+          </div>
+          <div id="cOut" class="calcout"></div>
+        </div>
+      </div>
+      <label class="check">
+        <input id="revealToggle" type="checkbox">
+        <span>Show the answers on the cards (check your own maths, or give up). Leave it off to play properly.</span>
+      </label>
     </section>
 
     <section class="card" id="walletCard">
@@ -65,7 +105,7 @@
       <p id="perkLine" class="small muted perk"></p>
     </section>
 
-    <div class="grid" id="offers"></div>
+    <div id="tiers"></div>
 
     <section class="card txcard" id="txCard" hidden>
       <h3>Transaction status</h3>
@@ -93,13 +133,15 @@
     <section class="card">
       <h2>Rules</h2>
       <ul class="rules">
-        <li><b>Price:</b> 0.001 ETH buys one pack of 100 STUD plus the bonus of the button you pressed.</li>
-        <li><b>Bonus:</b> Rush starts at 5.00% and loses 0.50% per purchase (floor 1.00%). Steady starts at 3.00% and loses 0.25% (floor 0.50%). Bargain bin starts at 1.00% and loses 0.10% (floor 0.10%).</li>
-        <li><b>Recovery:</b> every idle minute gives a button back 0.10%, up to its starting bonus.</li>
-        <li><b>Lock:</b> after anyone buys, that button is locked for all players: Rush 30 seconds, Steady 60 seconds, Bargain bin 120 seconds.</li>
-        <li><b>GAME perk:</b> holding at least 1 GAME adds 1.00% to every purchase.</li>
+        <li><b>Price:</b> 0.001 ETH buys one pack of 100 STUD plus the bonus of the option you pressed.</li>
+        <li><b>Bonus:</b> compound interest. Bonus = 100 &middot; (1 + rate)<sup>rounds</sup> &minus; 100 &minus; fee. The fee is a flat amount of STUD taken from the bonus (the bonus never goes below zero).</li>
+        <li><b>Tiers:</b> Rush has the biggest rates and a 30 second lock, Steady a 60 second lock, Bargain bin the smallest rates and a 120 second lock. Each tier has four options with different rates, rounds and fees.</li>
+        <li><b>Shrinking rate:</b> every purchase lowers that option's rate by a fixed step (down to its floor). Recompute with the new rate before you buy.</li>
+        <li><b>Recovery:</b> every idle minute gives an option back 0.05% of rate, up to its starting rate.</li>
+        <li><b>Lock:</b> after anyone buys, that option is locked for all players. The other options stay open.</li>
+        <li><b>GAME perk:</b> holding at least 1 GAME adds a flat 1 STUD to every purchase.</li>
         <li><b>Limit:</b> 10 packs per wallet.</li>
-        <li><b>On-chain:</b> price, bonus, locks, limits, stock and your results are checked and stored by the contract. This page only shows them and sends your transaction.</li>
+        <li><b>On-chain:</b> price, compound bonus, locks, limits, stock and your results are checked and stored by the contract. This page only shows them and sends your transaction.</li>
       </ul>
       <details class="demo">
         <summary>Demo tools</summary>

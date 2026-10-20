@@ -1,4 +1,4 @@
-/* Stud Rush front end. Plain script, ethers v6 (loaded as window.ethers).
+/* Stud Rush front end (compound-interest edition). Plain script, ethers v6 (loaded as window.ethers).
    The page only reads and displays state. Every rule is enforced by StudRush.sol. */
 (function () {
   "use strict";
@@ -14,11 +14,19 @@
     "Offer is cooling down", "Send exactly 0.001 ETH", "Wallet limit reached",
     "Shop is out of STUD", "Unknown offer", "STUD transfer failed",
   ];
-  const NAMES = [
-    { name: "Rush", blurb: "Biggest bonus, shortest lock" },
-    { name: "Steady", blurb: "Middle bonus, middle lock" },
-    { name: "Bargain bin", blurb: "Smallest bonus, longest lock" },
+  const TIERS = [
+    { name: "Rush", blurb: "Biggest rates, shortest lock (30 s)" },
+    { name: "Steady", blurb: "Middle rates, middle lock (60 s)" },
+    { name: "Bargain bin", blurb: "Small rates, longest lock (120 s)" },
   ];
+  // Option ids: 0-3 Rush, 4-7 Steady, 8-11 Bargain bin (same order as the contract).
+  const OPTIONS = [
+    "Quick Flip", "Double Up", "Sprint", "Burst",
+    "Short Hop", "Even Keel", "Long Haul", "Marathon",
+    "Penny Stack", "Nickel Drip", "Loose Change", "Dust Pile",
+  ];
+  const COUNT = OPTIONS.length, TIER_SIZE = 4;
+  const tierOf = (i) => Math.floor(i / TIER_SIZE);
   const LEVELS = [[10, "Maxed out"], [6, "Whale"], [3, "Trader"], [1, "Regular"], [0, "New buyer"]];
 
   const $ = (id) => document.getElementById(id);
@@ -27,8 +35,9 @@
     account: null, chainOk: false, writer: null,
     offers: null, stock: 0n, player: null,
     bal: { eth: null, stud: null, game: null },
-    c: { PACK: 100n * 10n ** 18n, PRICE: 10n ** 15n, MAX: 10 }, // replaced by contract reads
-    busy: false, demo: false, tick: 0,
+    c: { PACK: 100n * 10n ** 18n, PRICE: 10n ** 15n, MAX: 10, PERK: 100n }, // replaced by contract reads
+    busy: false, demo: false, reveal: false, tick: 0,
+    score: { smart: 0, total: 0 },
   };
 
   // ---------- helpers ----------
@@ -38,6 +47,28 @@
   const nowS = () => Math.floor(Date.now() / 1000);
   const clock = (s) => Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
   const txUrl = (h) => EXPLORER + "/tx/" + h;
+  // Same integer maths as StudRush.bonusFor: compound the pack, take off the flat fee, add the GAME perk.
+  function bonusOf(rateBps, rounds, feeBps, perk) {
+    const PACK = S.c.PACK;
+    let a = PACK;
+    for (let i = 0; i < rounds; i++) a = (a * (10000n + BigInt(rateBps))) / 10000n;
+    const gross = a - PACK;
+    const fee = (PACK * BigInt(feeBps)) / 10000n;
+    const net = gross > fee ? gross - fee : 0n;
+    return perk ? net + (PACK * S.c.PERK) / 10000n : net;
+  }
+  const studFee = (bps) => (Number(bps) / 100).toFixed(2) + " STUD";
+  function bonusNow(o) { return bonusOf(o.rate, o.rounds, o.fee, !!(S.player && S.player.gamePerk)); }
+  function bestInTier(t, onlyOpen) {
+    let best = -1, bestV = -1n;
+    for (let i = t * TIER_SIZE; i < (t + 1) * TIER_SIZE; i++) {
+      const o = S.offers && S.offers[i];
+      if (!o || (onlyOpen && o.readyAt > nowS())) continue;
+      const v = bonusNow(o);
+      if (v > bestV) { bestV = v; best = i; }
+    }
+    return best;
+  }
   const hasContract = () => !!(S.cfg && E.isAddress(S.cfg.address || ""));
   const hasGame = () => !!(S.cfg && E.isAddress(S.cfg.gameToken || "") && S.cfg.gameToken !== E.ZeroAddress);
 
@@ -78,6 +109,20 @@
     return (text || String(e)).slice(0, 240);
   }
 
+  function loadScore() {
+    try {
+      const v = JSON.parse(localStorage.getItem("studrush:score") || "null");
+      if (v && Number.isInteger(v.smart) && Number.isInteger(v.total)) S.score = v;
+    } catch (_) {}
+  }
+  function saveScore() {
+    try { localStorage.setItem("studrush:score", JSON.stringify(S.score)); } catch (_) {}
+    renderScore();
+  }
+  function renderScore() {
+    $("stScore").textContent = S.score.total ? S.score.smart + " / " + S.score.total : "-";
+  }
+
   // ---------- theme ----------
   function initTheme() {
     $("themeBtn").addEventListener("click", () => {
@@ -89,37 +134,46 @@
 
   // ---------- offers (built once, updated in place) ----------
   function buildOffers() {
-    const root = $("offers");
+    const root = $("tiers");
     root.textContent = "";
-    NAMES.forEach((n, i) => {
-      const card = document.createElement("section");
-      card.className = "card offer";
-      card.innerHTML =
-        '<div class="head"><h2>' + n.name + '</h2><span class="badge" id="o' + i + 'State">-</span></div>' +
-        '<p class="muted small" style="margin:0">' + n.blurb + "</p>" +
-        '<div class="bonus"><span id="o' + i + 'Bonus">-</span><small>bonus</small></div>' +
-        '<div class="get" id="o' + i + 'Get">-</div>' +
-        '<div class="track"><div class="fill" id="o' + i + 'Fill"></div></div>' +
-        '<ul class="facts">' +
-        '<li><span class="muted">After a purchase</span><span id="o' + i + 'Next">-</span></li>' +
-        '<li><span class="muted">Lowest bonus</span><span id="o' + i + 'Min">-</span></li>' +
-        '<li><span class="muted">Locks for everyone</span><span id="o' + i + 'Lock">-</span></li>' +
-        '<li><span class="muted">Sold</span><span id="o' + i + 'Sold">-</span></li>' +
-        '<li><span class="muted">Last buyer</span><span class="mono" id="o' + i + 'Last">-</span></li>' +
-        "</ul>" +
-        '<button class="btn primary" type="button" id="o' + i + 'Btn">-</button>';
-      root.appendChild(card);
-      $("o" + i + "Btn").addEventListener("click", () => buy(i));
+    TIERS.forEach((t, ti) => {
+      const sec = document.createElement("section");
+      sec.className = "tier";
+      sec.innerHTML =
+        '<div class="tierhead"><h2>' + t.name + "</h2>" +
+        '<span class="muted small">' + t.blurb + '</span></div><div class="grid four" id="tier' + ti + '"></div>';
+      root.appendChild(sec);
+      const grid = sec.querySelector(".grid");
+      for (let k = 0; k < TIER_SIZE; k++) {
+        const i = ti * TIER_SIZE + k;
+        const card = document.createElement("section");
+        card.className = "card offer";
+        card.id = "o" + i;
+        card.innerHTML =
+          '<div class="head"><h3>' + OPTIONS[i] + '</h3><span class="badge" id="o' + i + 'State">-</span></div>' +
+          '<div class="rate"><span id="o' + i + 'Rate">-</span><small>per round</small></div>' +
+          '<div class="plan"><span><b id="o' + i + 'Rounds">-</b> rounds</span><span>fee <b id="o' + i + 'Fee">-</b></span></div>' +
+          '<div class="get" id="o' + i + 'Get">-</div>' +
+          '<div class="track"><div class="fill" id="o' + i + 'Fill"></div></div>' +
+          '<ul class="facts">' +
+          '<li><span class="muted">Rate after a purchase</span><span id="o' + i + 'Next">-</span></li>' +
+          '<li><span class="muted">Lowest rate</span><span id="o' + i + 'Min">-</span></li>' +
+          '<li><span class="muted">Sold</span><span id="o' + i + 'Sold">-</span></li>' +
+          '<li><span class="muted">Last buyer</span><span class="mono" id="o' + i + 'Last">-</span></li>' +
+          "</ul>" +
+          '<button class="btn primary" type="button" id="o' + i + 'Btn">-</button>';
+        grid.appendChild(card);
+        $("o" + i + "Btn").addEventListener("click", () => buy(i));
+      }
     });
   }
 
-  function perkBps() { return S.player && S.player.gamePerk ? 100 : 0; }
+  function perkOn() { return !!(S.player && S.player.gamePerk); }
 
   function buttonState(i) {
     const o = S.offers && S.offers[i];
-    const bonus = o ? o.bonus + perkBps() : 0;
-    const get = S.c.PACK + (S.c.PACK * BigInt(bonus)) / 10000n;
     if (!hasContract() || !o) return { text: "Not available", disabled: true };
+    const get = S.c.PACK + bonusNow(o);
     if (!S.account) return { text: "Connect MetaMask to buy", disabled: false, action: "connect" };
     if (!S.chainOk) return { text: "Switch to Sepolia", disabled: false, action: "switch" };
     if (S.busy) return { text: "Waiting for MetaMask...", disabled: true };
@@ -134,33 +188,78 @@
         : { text: blockers[0], disabled: true };
     }
     if (S.bal.eth !== null && S.bal.eth < S.c.PRICE) return { text: "Not enough Sepolia ETH", disabled: true };
-    return { text: "Buy " + fmt(get) + " STUD for " + E.formatEther(S.c.PRICE) + " ETH", disabled: false };
+    return { text: "Buy this option for " + E.formatEther(S.c.PRICE) + " ETH", disabled: false };
   }
 
   function renderOffers() {
-    NAMES.forEach((_, i) => {
+    const best = TIERS.map((_, t) => (S.reveal ? bestInTier(t, false) : -1));
+    for (let i = 0; i < COUNT; i++) {
       const o = S.offers && S.offers[i];
       const st = buttonState(i);
       const btn = $("o" + i + "Btn");
       btn.textContent = st.text;
       btn.disabled = st.disabled;
-      if (!o) return;
+      if (!o) continue;
       const left = Math.max(0, o.readyAt - nowS());
-      const perk = perkBps();
-      const next = o.bonus > o.min + o.decay ? o.bonus - o.decay : o.min;
-      const get = S.c.PACK + (S.c.PACK * BigInt(o.bonus + perk)) / 10000n;
-      $("o" + i + "Bonus").textContent = pct(o.bonus + perk);
-      $("o" + i + "Get").textContent = "You get " + fmt(get) + " STUD" + (perk ? " (includes GAME perk)" : "");
-      $("o" + i + "Next").textContent = pct(next + perk);
-      $("o" + i + "Min").textContent = pct(o.min + perk);
-      $("o" + i + "Lock").textContent = o.cooldown + " s";
+      const next = o.rate > o.min + o.decay ? o.rate - o.decay : o.min;
+      $("o" + i + "Rate").textContent = pct(o.rate);
+      $("o" + i + "Rounds").textContent = String(o.rounds);
+      $("o" + i + "Fee").textContent = studFee(o.fee);
+      const g = $("o" + i + "Get");
+      if (S.reveal) {
+        const b = bonusNow(o);
+        g.textContent = "Bonus " + fmt(b, 4) + " STUD" + (perkOn() ? " (incl. GAME perk)" : "");
+        g.className = "get shown";
+      } else {
+        g.textContent = "Bonus: calculate it yourself";
+        g.className = "get hidden";
+      }
+      $("o" + i).classList.toggle("best", best[tierOf(i)] === i);
+      $("o" + i + "Next").textContent = pct(next);
+      $("o" + i + "Min").textContent = pct(o.min);
       $("o" + i + "Sold").textContent = String(o.sold);
       $("o" + i + "Last").textContent = short(o.lastBuyer);
       const badge = $("o" + i + "State");
-      badge.textContent = left > 0 ? "Locked " + clock(left) : "Open";
+      badge.textContent = left > 0 ? "Locked " + clock(left) : (best[tierOf(i)] === i ? "Best value" : "Open");
       badge.className = "badge " + (left > 0 ? "warn" : "ok");
       $("o" + i + "Fill").style.width = left > 0 ? Math.min(100, (left / o.cooldown) * 100) + "%" : "0%";
-    });
+    }
+  }
+
+  // ---------- calculator (a scratchpad: it never reads the offers) ----------
+  function renderCalc() {
+    if (!E) return;
+    const rate = parseFloat($("cRate").value);
+    const rounds = parseInt($("cRounds").value, 10);
+    const fee = parseFloat($("cFee").value || "0");
+    const out = $("cOut");
+    if (!(rate >= 0) || !(rounds >= 1) || rounds > 30 || !(fee >= 0)) {
+      out.textContent = "Enter a rate, rounds (1 to 30) and a fee.";
+      return;
+    }
+    const bps = Math.round(rate * 100), feeBps = Math.round(fee * 100);
+    const base = 100n * 10n ** 18n;
+    let a = base;
+    const rows = [];
+    for (let r = 1; r <= rounds; r++) {
+      a = (a * (10000n + BigInt(bps))) / 10000n;
+      if (rounds <= 8 || r <= 3 || r === rounds) rows.push("Round " + r + ": " + Number(E.formatUnits(a, 18)).toFixed(4));
+      else if (r === 4) rows.push("...");
+    }
+    const bonus = bonusOf(bps, rounds, feeBps, false);
+    const simple = (rate * rounds).toFixed(2);
+    out.innerHTML = "";
+    const pre = document.createElement("div");
+    pre.className = "mono small";
+    pre.textContent = rows.join("\n");
+    pre.style.whiteSpace = "pre";
+    const res = document.createElement("div");
+    res.innerHTML = "<b></b>";
+    res.firstChild.textContent = "Bonus " + Number(E.formatUnits(bonus, 18)).toFixed(4) + " STUD";
+    const note = document.createElement("div");
+    note.className = "muted small";
+    note.textContent = "100 x (1 + " + rate + "/100)^" + rounds + " - 100 - " + fee + " fee. Simple interest would say " + simple + "% (before the fee): that is the trap.";
+    out.append(pre, res, note);
   }
 
   function renderWallet() {
@@ -171,8 +270,8 @@
     $("addTokenBtn").hidden = !S.account;
     const p = $("perkLine");
     if (!hasGame()) p.textContent = "The GAME perk is not enabled in this deployment.";
-    else if (!S.account) p.textContent = "Connect a wallet to see whether you get the GAME perk (+1.00% when you hold at least 1 GAME).";
-    else p.textContent = S.player && S.player.gamePerk ? "GAME perk active: +1.00% on every purchase." : "Hold at least 1 GAME to add 1.00% to every purchase.";
+    else if (!S.account) p.textContent = "Connect a wallet to see whether you get the GAME perk (+1 STUD flat bonus when you hold at least 1 GAME).";
+    else p.textContent = S.player && S.player.gamePerk ? "GAME perk active: +1 STUD on every purchase." : "Hold at least 1 GAME to add 1 STUD to every purchase.";
   }
 
   function renderPlayer() {
@@ -199,7 +298,7 @@
     c.disabled = !!S.account;
   }
 
-  function render() { renderHeader(); renderWallet(); renderPlayer(); renderOffers(); }
+  function render() { renderHeader(); renderWallet(); renderPlayer(); renderOffers(); renderScore(); }
 
   // ---------- reads ----------
   async function loadChainState() {
@@ -207,7 +306,8 @@
     try {
       const [offers, stock] = await Promise.all([S.reader.getOffers(), S.reader.stock()]);
       S.offers = Array.from(offers, (o) => ({
-        bonus: Number(o.bonus), start: Number(o.startBonus), decay: Number(o.decay), min: Number(o.minBonus),
+        rate: Number(o.rate), start: Number(o.startRate), decay: Number(o.decay), min: Number(o.minRate),
+        rounds: Number(o.rounds), fee: Number(o.feeBps),
         cooldown: Number(o.cooldown), readyAt: Number(o.readyAt), sold: Number(o.sold), lastBuyer: o.lastBuyer,
       }));
       S.stock = stock;
@@ -258,7 +358,7 @@
         who.textContent = short(l.args.buyer);
         const what = document.createElement("span");
         what.className = "muted small";
-        what.textContent = NAMES[Number(l.args.offerId)].name + " at " + pct(l.args.bonusBps) + " bonus";
+        what.textContent = OPTIONS[Number(l.args.offerId)] + " at " + pct(l.args.rateBps) + " per round";
         meta.append(who, what);
         const right = document.createElement("span");
         const a = document.createElement("a");
@@ -355,6 +455,11 @@
     if (st.action === "connect") return connect();
     if (st.action === "switch") return switchNet();
     if (st.disabled || !S.writer) return;
+    // Remember what the player could see, so we can say afterwards whether the pick was the best open one.
+    const t = tierOf(i);
+    const bestId = bestInTier(t, true);
+    const bestBonus = bestId >= 0 ? bonusNow(S.offers[bestId]) : 0n;
+    const myBonus = bonusNow(S.offers[i]);
     S.busy = true;
     render();
     try {
@@ -366,10 +471,23 @@
       const rc = await tx.wait();
       if (rc && rc.status === 1) {
         let msg = "Purchase confirmed.";
+        let smart = null;
         try {
           for (const log of rc.logs) {
             const p = S.writer.interface.parseLog(log);
-            if (p && p.name === "Purchased") msg = "Purchase confirmed: you received " + fmt(p.args.studReceived) + " STUD (bonus " + pct(Number(p.args.bonusBps) + (S.player && S.player.gamePerk ? 100 : 0)) + ").";
+            if (p && p.name === "Purchased") {
+              msg = "Purchase confirmed: " + OPTIONS[i] + " at " + pct(p.args.rateBps) + " per round gave you " + fmt(p.args.studReceived, 4) +
+                " STUD (bonus " + fmt(p.args.bonusStud, 4) + ").";
+            }
+          }
+          if (bestId >= 0) {
+            smart = myBonus >= bestBonus;
+            S.score.total += 1;
+            if (smart) S.score.smart += 1;
+            saveScore();
+            msg += smart
+              ? " Smart pick: it was the best open " + TIERS[t].name + " option."
+              : " The best open " + TIERS[t].name + " option was " + OPTIONS[bestId] + " (" + fmt(bestBonus, 4) + " STUD bonus). You missed " + fmt(bestBonus - myBonus, 4) + " STUD. Check the maths next time.";
           }
         } catch (_) {}
         setTx("ok", msg, tx.hash);
@@ -406,6 +524,10 @@
     $("connectBtn").addEventListener("click", connect);
     $("addTokenBtn").addEventListener("click", addToken);
     $("demoToggle").addEventListener("change", (e) => { S.demo = e.target.checked; render(); });
+    $("revealToggle").addEventListener("change", (e) => { S.reveal = e.target.checked; render(); });
+    ["cRate", "cRounds", "cFee"].forEach((id) => $(id).addEventListener("input", renderCalc));
+    loadScore();
+    renderCalc();
     setInterval(renderOffers, 1000);
     render();
 
@@ -431,8 +553,8 @@
     } else {
       S.reader = new E.Contract(S.cfg.address, S.abi, S.readProvider);
       try {
-        const [pack, price, max] = await Promise.all([S.reader.PACK(), S.reader.PRICE(), S.reader.MAX_BUYS()]);
-        S.c = { PACK: pack, PRICE: price, MAX: Number(max) };
+        const [pack, price, max, perk] = await Promise.all([S.reader.PACK(), S.reader.PRICE(), S.reader.MAX_BUYS(), S.reader.GAME_PERK()]);
+        S.c = { PACK: pack, PRICE: price, MAX: Number(max), PERK: perk };
       } catch (_) {}
       await loadChainState();
       setInterval(loadChainState, POLL_MS);

@@ -45,7 +45,7 @@
       {
         "indexed": false,
         "internalType": "uint16",
-        "name": "bonusBps",
+        "name": "rateBps",
         "type": "uint16"
       },
       {
@@ -99,6 +99,32 @@
   },
   {
     "inputs": [],
+    "name": "MAX_ROUNDS",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "OFFER_COUNT",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "PACK",
     "outputs": [
       {
@@ -137,6 +163,19 @@
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "TIER_SIZE",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "address",
@@ -153,6 +192,40 @@
       }
     ],
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "rateBps",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint8",
+        "name": "rounds",
+        "type": "uint8"
+      },
+      {
+        "internalType": "uint16",
+        "name": "feeBps",
+        "type": "uint16"
+      },
+      {
+        "internalType": "bool",
+        "name": "perk",
+        "type": "bool"
+      }
+    ],
+    "name": "bonusFor",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "pure",
     "type": "function"
   },
   {
@@ -176,7 +249,7 @@
         "type": "uint8"
       }
     ],
-    "name": "currentBonus",
+    "name": "currentRate",
     "outputs": [
       {
         "internalType": "uint16",
@@ -208,12 +281,12 @@
         "components": [
           {
             "internalType": "uint16",
-            "name": "bonus",
+            "name": "rate",
             "type": "uint16"
           },
           {
             "internalType": "uint16",
-            "name": "startBonus",
+            "name": "startRate",
             "type": "uint16"
           },
           {
@@ -223,7 +296,17 @@
           },
           {
             "internalType": "uint16",
-            "name": "minBonus",
+            "name": "minRate",
+            "type": "uint16"
+          },
+          {
+            "internalType": "uint8",
+            "name": "rounds",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint16",
+            "name": "feeBps",
             "type": "uint16"
           },
           {
@@ -247,9 +330,9 @@
             "type": "address"
           }
         ],
-        "internalType": "struct StudRush.OfferView[3]",
+        "internalType": "struct StudRush.OfferView[12]",
         "name": "out",
-        "type": "tuple[3]"
+        "type": "tuple[12]"
       }
     ],
     "stateMutability": "view",
@@ -327,7 +410,7 @@
     "outputs": [
       {
         "internalType": "uint16",
-        "name": "startBonus",
+        "name": "startRate",
         "type": "uint16"
       },
       {
@@ -337,7 +420,17 @@
       },
       {
         "internalType": "uint16",
-        "name": "minBonus",
+        "name": "minRate",
+        "type": "uint16"
+      },
+      {
+        "internalType": "uint8",
+        "name": "rounds",
+        "type": "uint8"
+      },
+      {
+        "internalType": "uint16",
+        "name": "feeBps",
         "type": "uint16"
       },
       {
@@ -384,6 +477,30 @@
   {
     "inputs": [
       {
+        "internalType": "uint8",
+        "name": "offerId",
+        "type": "uint8"
+      },
+      {
+        "internalType": "bool",
+        "name": "perk",
+        "type": "bool"
+      }
+    ],
+    "name": "quote",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
@@ -393,12 +510,12 @@
     "outputs": [
       {
         "internalType": "uint16",
-        "name": "bonus",
+        "name": "rate",
         "type": "uint16"
       },
       {
         "internalType": "uint64",
-        "name": "bonusAt",
+        "name": "rateAt",
         "type": "uint64"
       },
       {
