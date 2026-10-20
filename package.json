@@ -1,0 +1,19 @@
+{
+  "name": "stud-rush",
+  "version": "1.0.0",
+  "description": "Stud Rush: a gamified STUD shop on Ethereum Sepolia",
+  "private": true,
+  "scripts": {
+    "test": "hardhat test",
+    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
+    "start": "npx --yes serve -l 8080 ."
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.1.2",
+    "@openzeppelin/contracts": "^5.6.1",
+    "hardhat": "^2.29.1"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.8"
+  }
+}

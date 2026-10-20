@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script>
+    (function () {
+      var t;
+      try { t = localStorage.getItem("studrush:theme"); } catch (e) {}
+      if (t !== "light" && t !== "dark") {
+        t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      }
+      document.documentElement.dataset.theme = t;
+    })();
+  </script>
+  <title>Stud Rush | Buy STUD on Sepolia</title>
+  <meta name="description" content="A three-button STUD shop on Ethereum Sepolia. Pick the best bonus before it shrinks and before the button locks.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap bar">
+      <div class="brand">Stud&nbsp;Rush</div>
+      <div class="walletbox">
+        <span id="netBadge" class="badge off">Not connected</span>
+        <span id="acct" class="acct" hidden></span>
+        <button id="themeBtn" class="iconbtn" type="button" aria-label="Switch theme" title="Switch theme">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="1.5"></circle>
+            <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+          </svg>
+        </button>
+        <button id="connectBtn" class="btn primary" type="button">Connect MetaMask</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div id="banner" class="banner" hidden></div>
+
+    <section class="card intro">
+      <h1>Stud Rush</h1>
+      <p>
+        Buy STUD with Sepolia ETH. Every pack is <b>100 STUD for 0.001 ETH</b>. Pick a button and you get a
+        <b>bonus on top</b>. The bonus shrinks with every purchase, and after anyone buys, that button
+        <b>locks for every player</b>. Choose between a big bonus that locks fast and a small one that waits longer.
+      </p>
+      <p class="small muted">
+        Ethereum Sepolia test network only. Test ETH has no value.
+        <span id="links"></span>
+      </p>
+    </section>
+
+    <section class="card" id="walletCard">
+      <div class="boardhead">
+        <h2>Your wallet</h2>
+        <button id="addTokenBtn" class="btn small" type="button" hidden>Add STUD to MetaMask</button>
+      </div>
+      <div class="stats four">
+        <div><span class="muted small">Sepolia ETH</span><b id="balEth">-</b></div>
+        <div><span class="muted small">STUD</span><b id="balStud">-</b></div>
+        <div><span class="muted small">GAME</span><b id="balGame">-</b></div>
+        <div><span class="muted small">Shop stock</span><b id="stock">-</b></div>
+      </div>
+      <p id="perkLine" class="small muted perk"></p>
+    </section>
+
+    <div class="grid" id="offers"></div>
+
+    <section class="card txcard" id="txCard" hidden>
+      <h3>Transaction status</h3>
+      <p id="txMsg"></p>
+      <p id="txLink" class="small"></p>
+    </section>
+
+    <div class="grid two">
+      <section class="card">
+        <h2>Your results</h2>
+        <div class="stats">
+          <div><span class="muted small">Level</span><b id="stLevel">-</b></div>
+          <div><span class="muted small">Packs bought</span><b id="stBuys">-</b></div>
+          <div><span class="muted small">STUD bought</span><b id="stStud">-</b></div>
+          <div><span class="muted small">Bonus STUD earned</span><b id="stBonus">-</b></div>
+        </div>
+        <p class="small muted">These numbers are stored in the contract. Reload the page and they stay.</p>
+      </section>
+      <section class="card">
+        <h2>Latest purchases</h2>
+        <ul id="activity" class="list"><li class="muted">Loading...</li></ul>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2>Rules</h2>
+      <ul class="rules">
+        <li><b>Price:</b> 0.001 ETH buys one pack of 100 STUD plus the bonus of the button you pressed.</li>
+        <li><b>Bonus:</b> Rush starts at 5.00% and loses 0.50% per purchase (floor 1.00%). Steady starts at 3.00% and loses 0.25% (floor 0.50%). Bargain bin starts at 1.00% and loses 0.10% (floor 0.10%).</li>
+        <li><b>Recovery:</b> every idle minute gives a button back 0.10%, up to its starting bonus.</li>
+        <li><b>Lock:</b> after anyone buys, that button is locked for all players: Rush 30 seconds, Steady 60 seconds, Bargain bin 120 seconds.</li>
+        <li><b>GAME perk:</b> holding at least 1 GAME adds 1.00% to every purchase.</li>
+        <li><b>Limit:</b> 10 packs per wallet.</li>
+        <li><b>On-chain:</b> price, bonus, locks, limits, stock and your results are checked and stored by the contract. This page only shows them and sends your transaction.</li>
+      </ul>
+      <details class="demo">
+        <summary>Demo tools</summary>
+        <label class="check">
+          <input id="demoToggle" type="checkbox">
+          <span>Send purchases even when the contract will reject them (the transaction fails on Etherscan, which proves the rules are enforced on-chain).</span>
+        </label>
+      </details>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap small">
+      Learning project. Ethereum Sepolia (chain ID 11155111), Solidity ^0.8.27, ethers.js v6. Not audited.
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+  <script>window.ethers || document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"><\/script>');</script>
+  <script src="game.js"></script>
+</body>
+</html>
