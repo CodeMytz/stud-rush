@@ -7,14 +7,12 @@
     (function () {
       var t;
       try { t = localStorage.getItem("studrush:theme"); } catch (e) {}
-      if (t !== "light" && t !== "dark") {
-        t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-      }
+      if (t !== "light" && t !== "dark") t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
       document.documentElement.dataset.theme = t;
     })();
   </script>
-  <title>Stud Rush | Buy STUD on Sepolia</title>
-  <meta name="description" content="A STUD shop on Ethereum Sepolia with twelve options. Use compound interest (salikti procenti) to find the best bonus before it shrinks and before the option locks.">
+  <title>Stud Rush | Compound interest game on Sepolia</title>
+  <meta name="description" content="Five timed rounds. Pick the deal with the best compound interest (salikti procenti). Most round wins takes the STUD prize.">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -25,10 +23,7 @@
         <span id="netBadge" class="badge off">Not connected</span>
         <span id="acct" class="acct" hidden></span>
         <button id="themeBtn" class="iconbtn" type="button" aria-label="Switch theme" title="Switch theme">
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="1.5"></circle>
-            <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="1.5"></circle><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
         </button>
         <button id="connectBtn" class="btn primary" type="button">Connect MetaMask</button>
       </div>
@@ -41,122 +36,63 @@
     <section class="card intro">
       <h1>Stud Rush</h1>
       <p>
-        Buy STUD with Sepolia ETH. Every pack is <b>100 STUD for 0.001 ETH</b>. Three tiers, <b>four options in each</b>.
-        Every option pays a bonus built with <b>compound interest (salikti procenti)</b>: the pack grows by a rate
-        for a number of rounds, then a flat fee is taken off. The cards show only the rate, the rounds and the fee.
-        <b>You work out which option pays the most.</b>
+        <b>5 rounds, 4 deals per round, 1 pick per round.</b> Each deal grows <b>1000 points</b> with
+        <b>compound interest (salikti procenti)</b> and then a flat fee is taken off. The cards show only the rate,
+        the periods and the fee, <b>you do the maths</b>. The contract scores every pick and the best deal of the round wins it.
+        After round 5 the player with the <b>most round wins</b> gets <b id="prizeTxt">500 STUD</b>.
       </p>
-      <p>
-        The rate shrinks with every purchase, and after anyone buys, that option <b>locks for every player</b>,
-        so the best answer changes while you calculate.
-      </p>
+      <p class="formula mono">value = 1000 &times; (1 + rate)<sup>periods</sup> &minus; 1000 &minus; fee</p>
       <p class="small muted">
-        Ethereum Sepolia test network only. Test ETH has no value.
+        Round timers: 30 s, 45 s, 60 s, 75 s, 90 s. Entry 0.001 ETH (Sepolia test ETH, no value). Joining closes when round 2 starts.
+        Tiebreak: higher total value, then ties on a single round go to the earlier pick.
         <span id="links"></span>
       </p>
     </section>
 
+    <section class="card" id="stage">
+      <div class="boardhead">
+        <h2 id="stageTitle">Game</h2>
+        <span id="timer" class="timer mono">--:--</span>
+      </div>
+      <div class="track"><div id="bar" class="fill" style="width:0"></div></div>
+      <p id="stageMsg" class="muted">Connect your wallet to play.</p>
+      <div class="actions">
+        <button id="startBtn" class="btn primary" type="button" hidden>Start new game</button>
+        <button id="joinBtn" class="btn primary" type="button" hidden>Join (0.001 ETH)</button>
+        <button id="finishBtn" class="btn primary" type="button" hidden>Finish game and pay winner</button>
+      </div>
+      <div id="deals" class="grid four" hidden></div>
+    </section>
+
+    <section class="card">
+      <h2>Rounds</h2>
+      <div id="rounds" class="rounds"></div>
+    </section>
+
+    <section class="card">
+      <h2>Players</h2>
+      <div id="players" class="muted">No players yet.</div>
+    </section>
+
     <section class="card mathcard">
-      <div class="boardhead">
-        <h2>Math corner: salikti procenti</h2>
-        <span class="badge" title="Counted after each purchase you make">Smart picks: <b id="stScore">-</b></span>
+      <h2>Math corner</h2>
+      <p class="small muted">Practice calculator (not sent anywhere). Adding rate &times; periods (simple interest) gives the wrong ranking on purpose.</p>
+      <div class="calcrow">
+        <label>Rate %<input id="cRate" type="number" step="0.01" value="5"></label>
+        <label>Periods<input id="cN" type="number" step="1" min="1" value="3"></label>
+        <label>Fee (points)<input id="cFee" type="number" step="1" min="0" value="0"></label>
       </div>
-      <div class="mathgrid">
-        <div>
-          <p class="formula">S = K &middot; (1 + r)<sup>n</sup></p>
-          <p class="small muted" style="margin-top:0">
-            K is the start amount (100 STUD), r is the rate per round as a decimal (3% is 0.03),
-            n is the number of rounds. Each round adds interest on the interest of the rounds before it.
-          </p>
-          <p class="small">
-            <b>Bonus = S &minus; 100 &minus; fee.</b><br>
-            Example: 3.00% for 4 rounds with a 0.50 STUD fee.<br>
-            S = 100 &middot; 1.03<sup>4</sup> = 112.5509, so the bonus is 12.5509 &minus; 0.50 = <b>12.0509 STUD</b>.
-            Adding 3% four times (12%) is simple interest and gives the wrong answer.
-          </p>
-        </div>
-        <div class="calc">
-          <h3>Calculator (practice with any numbers)</h3>
-          <div class="calcrow">
-            <label>Rate % per round<input id="cRate" type="number" inputmode="decimal" min="0" step="0.01" value="3"></label>
-            <label>Rounds<input id="cRounds" type="number" inputmode="numeric" min="1" max="30" step="1" value="4"></label>
-            <label>Fee (STUD)<input id="cFee" type="number" inputmode="decimal" min="0" step="0.01" value="0.5"></label>
-          </div>
-          <div id="cOut" class="calcout"></div>
-        </div>
-      </div>
-      <label class="check">
-        <input id="revealToggle" type="checkbox">
-        <span>Show the answers on the cards (check your own maths, or give up). Leave it off to play properly.</span>
-      </label>
+      <p id="cOut" class="calcout mono"></p>
     </section>
 
-    <section class="card" id="walletCard">
-      <div class="boardhead">
-        <h2>Your wallet</h2>
-        <button id="addTokenBtn" class="btn small" type="button" hidden>Add STUD to MetaMask</button>
-      </div>
-      <div class="stats four">
-        <div><span class="muted small">Sepolia ETH</span><b id="balEth">-</b></div>
-        <div><span class="muted small">STUD</span><b id="balStud">-</b></div>
-        <div><span class="muted small">GAME</span><b id="balGame">-</b></div>
-        <div><span class="muted small">Shop stock</span><b id="stock">-</b></div>
-      </div>
-      <p id="perkLine" class="small muted perk"></p>
-    </section>
-
-    <div id="tiers"></div>
-
-    <section class="card txcard" id="txCard" hidden>
-      <h3>Transaction status</h3>
+    <section id="txCard" class="card txcard" hidden>
       <p id="txMsg"></p>
       <p id="txLink" class="small"></p>
     </section>
-
-    <div class="grid two">
-      <section class="card">
-        <h2>Your results</h2>
-        <div class="stats">
-          <div><span class="muted small">Level</span><b id="stLevel">-</b></div>
-          <div><span class="muted small">Packs bought</span><b id="stBuys">-</b></div>
-          <div><span class="muted small">STUD bought</span><b id="stStud">-</b></div>
-          <div><span class="muted small">Bonus STUD earned</span><b id="stBonus">-</b></div>
-        </div>
-        <p class="small muted">These numbers are stored in the contract. Reload the page and they stay.</p>
-      </section>
-      <section class="card">
-        <h2>Latest purchases</h2>
-        <ul id="activity" class="list"><li class="muted">Loading...</li></ul>
-      </section>
-    </div>
-
-    <section class="card">
-      <h2>Rules</h2>
-      <ul class="rules">
-        <li><b>Price:</b> 0.001 ETH buys one pack of 100 STUD plus the bonus of the option you pressed.</li>
-        <li><b>Bonus:</b> compound interest. Bonus = 100 &middot; (1 + rate)<sup>rounds</sup> &minus; 100 &minus; fee. The fee is a flat amount of STUD taken from the bonus (the bonus never goes below zero).</li>
-        <li><b>Tiers:</b> Rush has the biggest rates and a 30 second lock, Steady a 60 second lock, Bargain bin the smallest rates and a 120 second lock. Each tier has four options with different rates, rounds and fees.</li>
-        <li><b>Shrinking rate:</b> every purchase lowers that option's rate by a fixed step (down to its floor). Recompute with the new rate before you buy.</li>
-        <li><b>Recovery:</b> every idle minute gives an option back 0.05% of rate, up to its starting rate.</li>
-        <li><b>Lock:</b> after anyone buys, that option is locked for all players. The other options stay open.</li>
-        <li><b>GAME perk:</b> holding at least 1 GAME adds a flat 1 STUD to every purchase.</li>
-        <li><b>Limit:</b> 10 packs per wallet.</li>
-        <li><b>On-chain:</b> price, compound bonus, locks, limits, stock and your results are checked and stored by the contract. This page only shows them and sends your transaction.</li>
-      </ul>
-      <details class="demo">
-        <summary>Demo tools</summary>
-        <label class="check">
-          <input id="demoToggle" type="checkbox">
-          <span>Send purchases even when the contract will reject them (the transaction fails on Etherscan, which proves the rules are enforced on-chain).</span>
-        </label>
-      </details>
-    </section>
   </main>
 
-  <footer class="footer">
-    <div class="wrap small">
-      Learning project. Ethereum Sepolia (chain ID 11155111), Solidity ^0.8.27, ethers.js v6. Not audited.
-    </div>
+  <footer class="footer wrap small muted">
+    <p>Learning project. Ethereum Sepolia (chain ID 11155111), Solidity ^0.8.27, ethers.js v6. Not audited.</p>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>

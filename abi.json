@@ -5,11 +5,6 @@
         "internalType": "address",
         "name": "studAddress",
         "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "gameAddress",
-        "type": "address"
       }
     ],
     "stateMutability": "nonpayable",
@@ -20,47 +15,116 @@
     "inputs": [
       {
         "indexed": true,
-        "internalType": "address",
-        "name": "buyer",
-        "type": "address"
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
       },
       {
         "indexed": true,
+        "internalType": "address",
+        "name": "winner",
+        "type": "address"
+      },
+      {
+        "indexed": false,
         "internalType": "uint8",
-        "name": "offerId",
+        "name": "roundsWon",
         "type": "uint8"
       },
       {
         "indexed": false,
         "internalType": "uint256",
-        "name": "studReceived",
+        "name": "prize",
         "type": "uint256"
-      },
+      }
+    ],
+    "name": "GameFinished",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
       {
-        "indexed": false,
+        "indexed": true,
         "internalType": "uint256",
-        "name": "bonusStud",
+        "name": "id",
         "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint16",
-        "name": "rateBps",
-        "type": "uint16"
       },
       {
         "indexed": false,
         "internalType": "uint64",
-        "name": "lockedUntil",
+        "name": "startTime",
         "type": "uint64"
       }
     ],
-    "name": "Purchased",
+    "name": "GameStarted",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "player",
+        "type": "address"
+      }
+    ],
+    "name": "Joined",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "player",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint8",
+        "name": "round",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint8",
+        "name": "slot",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "value",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "leading",
+        "type": "bool"
+      }
+    ],
+    "name": "Picked",
     "type": "event"
   },
   {
     "inputs": [],
-    "name": "GAME_PERK",
+    "name": "DEALS",
     "outputs": [
       {
         "internalType": "uint256",
@@ -73,7 +137,7 @@
   },
   {
     "inputs": [],
-    "name": "GAME_PERK_MIN",
+    "name": "ENTRY_FEE",
     "outputs": [
       {
         "internalType": "uint256",
@@ -86,7 +150,7 @@
   },
   {
     "inputs": [],
-    "name": "MAX_BUYS",
+    "name": "MAX_PLAYERS",
     "outputs": [
       {
         "internalType": "uint256",
@@ -99,7 +163,7 @@
   },
   {
     "inputs": [],
-    "name": "MAX_ROUNDS",
+    "name": "PRINCIPAL",
     "outputs": [
       {
         "internalType": "uint256",
@@ -112,7 +176,7 @@
   },
   {
     "inputs": [],
-    "name": "OFFER_COUNT",
+    "name": "PRIZE",
     "outputs": [
       {
         "internalType": "uint256",
@@ -125,65 +189,7 @@
   },
   {
     "inputs": [],
-    "name": "PACK",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "PRICE",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "REGEN_PER_MINUTE",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "TIER_SIZE",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "name": "bonusEarned",
+    "name": "ROUNDS",
     "outputs": [
       {
         "internalType": "uint256",
@@ -198,26 +204,117 @@
     "inputs": [
       {
         "internalType": "uint256",
-        "name": "rateBps",
+        "name": "",
         "type": "uint256"
       },
       {
-        "internalType": "uint8",
-        "name": "rounds",
-        "type": "uint8"
-      },
-      {
-        "internalType": "uint16",
-        "name": "feeBps",
-        "type": "uint16"
-      },
-      {
-        "internalType": "bool",
-        "name": "perk",
-        "type": "bool"
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
       }
     ],
-    "name": "bonusFor",
+    "name": "bestValue",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      }
+    ],
+    "name": "currentRound",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "r",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "slot",
+        "type": "uint256"
+      }
+    ],
+    "name": "dealAt",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint16",
+            "name": "rate",
+            "type": "uint16"
+          },
+          {
+            "internalType": "uint8",
+            "name": "periods",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint16",
+            "name": "feeBps",
+            "type": "uint16"
+          }
+        ],
+        "internalType": "struct StudRush.Deal",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint16",
+            "name": "rate",
+            "type": "uint16"
+          },
+          {
+            "internalType": "uint8",
+            "name": "periods",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint16",
+            "name": "feeBps",
+            "type": "uint16"
+          }
+        ],
+        "internalType": "struct StudRush.Deal",
+        "name": "d",
+        "type": "tuple"
+      }
+    ],
+    "name": "dealValue",
     "outputs": [
       {
         "internalType": "uint256",
@@ -229,170 +326,20 @@
     "type": "function"
   },
   {
-    "inputs": [
-      {
-        "internalType": "uint8",
-        "name": "offerId",
-        "type": "uint8"
-      }
-    ],
-    "name": "buy",
+    "inputs": [],
+    "name": "finish",
     "outputs": [],
-    "stateMutability": "payable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint8",
-        "name": "offerId",
-        "type": "uint8"
-      }
-    ],
-    "name": "currentRate",
-    "outputs": [
-      {
-        "internalType": "uint16",
-        "name": "",
-        "type": "uint16"
-      }
-    ],
-    "stateMutability": "view",
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
     "inputs": [],
-    "name": "gameToken",
+    "name": "gameId",
     "outputs": [
       {
-        "internalType": "contract IERC20",
+        "internalType": "uint256",
         "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "getOffers",
-    "outputs": [
-      {
-        "components": [
-          {
-            "internalType": "uint16",
-            "name": "rate",
-            "type": "uint16"
-          },
-          {
-            "internalType": "uint16",
-            "name": "startRate",
-            "type": "uint16"
-          },
-          {
-            "internalType": "uint16",
-            "name": "decay",
-            "type": "uint16"
-          },
-          {
-            "internalType": "uint16",
-            "name": "minRate",
-            "type": "uint16"
-          },
-          {
-            "internalType": "uint8",
-            "name": "rounds",
-            "type": "uint8"
-          },
-          {
-            "internalType": "uint16",
-            "name": "feeBps",
-            "type": "uint16"
-          },
-          {
-            "internalType": "uint32",
-            "name": "cooldown",
-            "type": "uint32"
-          },
-          {
-            "internalType": "uint64",
-            "name": "readyAt",
-            "type": "uint64"
-          },
-          {
-            "internalType": "uint32",
-            "name": "sold",
-            "type": "uint32"
-          },
-          {
-            "internalType": "address",
-            "name": "lastBuyer",
-            "type": "address"
-          }
-        ],
-        "internalType": "struct StudRush.OfferView[12]",
-        "name": "out",
-        "type": "tuple[12]"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "player",
-        "type": "address"
-      }
-    ],
-    "name": "getPlayer",
-    "outputs": [
-      {
-        "components": [
-          {
-            "internalType": "uint32",
-            "name": "purchases",
-            "type": "uint32"
-          },
-          {
-            "internalType": "uint256",
-            "name": "studBought",
-            "type": "uint256"
-          },
-          {
-            "internalType": "uint256",
-            "name": "bonusEarned",
-            "type": "uint256"
-          },
-          {
-            "internalType": "bool",
-            "name": "gamePerk",
-            "type": "bool"
-          }
-        ],
-        "internalType": "struct StudRush.PlayerView",
-        "name": "",
-        "type": "tuple"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "player",
-        "type": "address"
-      }
-    ],
-    "name": "hasGamePerk",
-    "outputs": [
-      {
-        "internalType": "bool",
-        "name": "",
-        "type": "bool"
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",
@@ -406,37 +353,195 @@
         "type": "uint256"
       }
     ],
-    "name": "offers",
+    "name": "games",
     "outputs": [
       {
-        "internalType": "uint16",
-        "name": "startRate",
-        "type": "uint16"
+        "internalType": "uint64",
+        "name": "startTime",
+        "type": "uint64"
       },
       {
-        "internalType": "uint16",
-        "name": "decay",
-        "type": "uint16"
+        "internalType": "bytes32",
+        "name": "seed",
+        "type": "bytes32"
       },
       {
-        "internalType": "uint16",
-        "name": "minRate",
-        "type": "uint16"
+        "internalType": "bool",
+        "name": "finished",
+        "type": "bool"
+      },
+      {
+        "internalType": "address",
+        "name": "winner",
+        "type": "address"
       },
       {
         "internalType": "uint8",
-        "name": "rounds",
+        "name": "winnerWins",
         "type": "uint8"
       },
       {
         "internalType": "uint16",
-        "name": "feeBps",
+        "name": "playerCount",
         "type": "uint16"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
       },
       {
-        "internalType": "uint32",
-        "name": "cooldown",
-        "type": "uint32"
+        "internalType": "address",
+        "name": "p",
+        "type": "address"
+      }
+    ],
+    "name": "getPicks",
+    "outputs": [
+      {
+        "internalType": "uint8[5]",
+        "name": "",
+        "type": "uint8[5]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      }
+    ],
+    "name": "getPlayers",
+    "outputs": [
+      {
+        "internalType": "address[]",
+        "name": "",
+        "type": "address[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "r",
+        "type": "uint256"
+      }
+    ],
+    "name": "getRoundDeals",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint16",
+            "name": "rate",
+            "type": "uint16"
+          },
+          {
+            "internalType": "uint8",
+            "name": "periods",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint16",
+            "name": "feeBps",
+            "type": "uint16"
+          }
+        ],
+        "internalType": "struct StudRush.Deal[4]",
+        "name": "out",
+        "type": "tuple[4]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      }
+    ],
+    "name": "getRoundWinners",
+    "outputs": [
+      {
+        "internalType": "address[5]",
+        "name": "",
+        "type": "address[5]"
+      },
+      {
+        "internalType": "uint256[5]",
+        "name": "",
+        "type": "uint256[5]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      }
+    ],
+    "name": "isOver",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "join",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "name": "joined",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
       }
     ],
     "stateMutability": "view",
@@ -458,40 +563,34 @@
   {
     "inputs": [
       {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "name": "purchases",
-    "outputs": [
-      {
-        "internalType": "uint32",
-        "name": "",
-        "type": "uint32"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
         "internalType": "uint8",
-        "name": "offerId",
+        "name": "slot",
         "type": "uint8"
-      },
-      {
-        "internalType": "bool",
-        "name": "perk",
-        "type": "bool"
       }
     ],
-    "name": "quote",
+    "name": "pick",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "r",
+        "type": "uint256"
+      }
+    ],
+    "name": "roundEnd",
     "outputs": [
       {
         "internalType": "uint256",
-        "name": "",
+        "name": "end",
         "type": "uint256"
       }
     ],
@@ -506,35 +605,46 @@
         "type": "uint256"
       }
     ],
-    "name": "states",
+    "name": "roundSeconds",
     "outputs": [
       {
-        "internalType": "uint16",
-        "name": "rate",
-        "type": "uint16"
-      },
-      {
-        "internalType": "uint64",
-        "name": "rateAt",
-        "type": "uint64"
-      },
-      {
-        "internalType": "uint64",
-        "name": "readyAt",
-        "type": "uint64"
-      },
-      {
         "internalType": "uint32",
-        "name": "sold",
+        "name": "",
         "type": "uint32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
       },
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "roundWinner",
+    "outputs": [
       {
         "internalType": "address",
-        "name": "lastBuyer",
+        "name": "",
         "type": "address"
       }
     ],
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "startGame",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -566,12 +676,17 @@
   {
     "inputs": [
       {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      },
+      {
         "internalType": "address",
         "name": "",
         "type": "address"
       }
     ],
-    "name": "studBought",
+    "name": "totalValue",
     "outputs": [
       {
         "internalType": "uint256",
@@ -583,13 +698,24 @@
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "totalPurchases",
-    "outputs": [
+    "inputs": [
       {
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "name": "wins",
+    "outputs": [
+      {
+        "internalType": "uint8",
+        "name": "",
+        "type": "uint8"
       }
     ],
     "stateMutability": "view",

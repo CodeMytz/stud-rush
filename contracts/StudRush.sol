@@ -3,205 +3,204 @@ pragma solidity ^0.8.27;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-/// @title Stud Rush
-/// @notice A STUD shop with three tiers (Rush, Steady, Bargain bin) and four options in each.
-///         Every pack is 100 STUD for 0.001 ETH. Each option pays a bonus built with COMPOUND
-///         interest ("salikti procenti"): the pack grows by `rate` percent for `rounds` rounds,
-///         and then a flat fee is taken off the bonus:
-///
-///             bonus = PACK * (1 + rate)^rounds - PACK - fee
-///
-///         The rate of an option shrinks with every purchase and slowly recovers, and after
-///         ANYONE buys an option it is locked for ALL players for a cooldown that depends on
-///         the tier. Holding GAME adds an extra flat perk.
-/// @dev    Rates are in basis points (100 = 1.00%). The compound loop runs at most MAX_ROUNDS
-///         times and uses integer maths, so the page can reproduce the result exactly.
-///         block.timestamp is only used for cooldowns and recovery, never for randomness.
+/// @title Stud Rush (game edition)
+/// @notice 5 timed rounds (30/45/60/75/90 s). Every round shows 4 deals. A deal grows a 1000-point
+///         principal with COMPOUND interest ("salikti procenti") and then a flat fee is taken off:
+///             value = 1000 * (1 + rate)^periods - 1000 - fee
+///         Each player picks ONE deal per round. The contract (the "server") scores every pick,
+///         so the best deal of the round is decided on-chain. Winner of the game = most round wins
+///         (tiebreak: higher total value, then earlier join) and receives PRIZE STUD.
 contract StudRush {
-    struct Offer {
-        uint16 startRate;  // best rate per round of the option (bps)
-        uint16 decay;      // rate lost after every purchase (bps)
-        uint16 minRate;    // rate never drops below this (bps)
-        uint8 rounds;      // how many times the rate is compounded
-        uint16 feeBps;     // flat fee taken from the bonus, in bps of PACK (100 = 1 STUD)
-        uint32 cooldown;   // seconds the option is locked for everyone
+    struct Deal { uint16 rate; uint8 periods; uint16 feeBps; } // rate/fee in bps (100 = 1%)
+
+    struct Game {
+        uint64 startTime;
+        bytes32 seed;      // rotates the order of the 4 deals in each round
+        bool finished;
+        address winner;
+        uint8 winnerWins;
+        uint16 playerCount;
     }
 
-    struct OfferState {
-        uint16 rate;       // stored rate (recovery is added on read)
-        uint64 rateAt;     // when `rate` was stored
-        uint64 readyAt;    // option is locked for everyone until this time
-        uint32 sold;       // packs sold through this option
-        address lastBuyer;
-    }
-
-    struct OfferView {
-        uint16 rate;
-        uint16 startRate;
-        uint16 decay;
-        uint16 minRate;
-        uint8 rounds;
-        uint16 feeBps;
-        uint32 cooldown;
-        uint64 readyAt;
-        uint32 sold;
-        address lastBuyer;
-    }
-
-    struct PlayerView {
-        uint32 purchases;
-        uint256 studBought;
-        uint256 bonusEarned;
-        bool gamePerk;
-    }
-
-    uint256 public constant OFFER_COUNT = 12;        // 3 tiers x 4 options
-    uint256 public constant TIER_SIZE = 4;
-    uint256 public constant PACK = 100 ether;        // 100 STUD (18 decimals)
-    uint256 public constant PRICE = 0.001 ether;     // ETH per pack
-    uint256 public constant MAX_BUYS = 10;           // packs per wallet
-    uint256 public constant MAX_ROUNDS = 30;
-    uint256 public constant GAME_PERK = 100;         // +1.00% of a pack (flat) for GAME holders
-    uint256 public constant GAME_PERK_MIN = 1 ether; // 1 GAME needed for the perk
-    uint256 public constant REGEN_PER_MINUTE = 5;    // +0.05% rate per idle minute
+    uint256 public constant ROUNDS = 5;
+    uint256 public constant DEALS = 4;
+    uint256 public constant PRINCIPAL = 1000 ether; // 1000 points (18 decimals)
+    uint256 public constant ENTRY_FEE = 0.001 ether;
+    uint256 public constant PRIZE = 500 ether;      // 500 STUD for the winner
+    uint256 public constant MAX_PLAYERS = 16;
 
     IERC20 public immutable stud;
-    IERC20 public immutable gameToken; // address(0) disables the GAME perk
     address public immutable owner;
 
-    Offer[12] public offers;
-    OfferState[12] public states;
+    uint32[5] public roundSeconds = [30, 45, 60, 75, 90];
+    Deal[4][5] internal base;
 
-    mapping(address => uint32) public purchases;
-    mapping(address => uint256) public studBought;
-    mapping(address => uint256) public bonusEarned;
-    uint256 public totalPurchases;
+    uint256 public gameId; // 0 = no game yet
+    mapping(uint256 => Game) public games;
+    mapping(uint256 => address[]) internal players;
+    mapping(uint256 => mapping(address => bool)) public joined;
+    // picks[game][player][round] = slot + 1 (0 = no pick)
+    mapping(uint256 => mapping(address => uint8[5])) internal picks;
+    mapping(uint256 => mapping(address => uint256)) public totalValue;
+    mapping(uint256 => mapping(address => uint8)) public wins;
+    mapping(uint256 => uint256[5]) public bestValue;
+    mapping(uint256 => address[5]) public roundWinner;
 
-    event Purchased(
-        address indexed buyer,
-        uint8 indexed offerId,
-        uint256 studReceived,
-        uint256 bonusStud,
-        uint16 rateBps,
-        uint64 lockedUntil
-    );
+    event GameStarted(uint256 indexed id, uint64 startTime);
+    event Joined(uint256 indexed id, address indexed player);
+    event Picked(uint256 indexed id, address indexed player, uint8 round, uint8 slot, uint256 value, bool leading);
+    event GameFinished(uint256 indexed id, address indexed winner, uint8 roundsWon, uint256 prize);
 
-    constructor(address studAddress, address gameAddress) {
+    constructor(address studAddress) {
         require(studAddress != address(0) && studAddress.code.length > 0, "STUD address invalid");
-        require(gameAddress == address(0) || gameAddress.code.length > 0, "GAME address invalid");
         stud = IERC20(studAddress);
-        gameToken = IERC20(gameAddress);
         owner = msg.sender;
+        //            rate  periods fee
+        base[0][0] = Deal(1300, 2, 225); base[0][1] = Deal(1100, 6, 550);
+        base[0][2] = Deal(875, 5, 525);  base[0][3] = Deal(1575, 4, 25);
+        base[1][0] = Deal(1275, 2, 0);   base[1][1] = Deal(1325, 8, 100);
+        base[1][2] = Deal(550, 7, 125);  base[1][3] = Deal(1100, 10, 525);
+        base[2][0] = Deal(1175, 11, 300); base[2][1] = Deal(1425, 9, 125);
+        base[2][2] = Deal(1200, 9, 300); base[2][3] = Deal(450, 11, 400);
+        base[3][0] = Deal(1150, 2, 50);  base[3][1] = Deal(1375, 14, 525);
+        base[3][2] = Deal(1475, 13, 25); base[3][3] = Deal(450, 14, 325);
+        base[4][0] = Deal(1550, 14, 325); base[4][1] = Deal(1075, 11, 125);
+        base[4][2] = Deal(975, 22, 525); base[4][3] = Deal(1275, 2, 525);
+    }
 
-        //                  start  decay  floor rounds fee   lock
-        // Tier 0: Rush (30 s). Big rates, few rounds.
-        offers[0]  = Offer(500,   50,   100,  2,   0,    30);  // 5.00% x 2
-        offers[1]  = Offer(300,   30,    60,  4,   50,   30);  // 3.00% x 4, fee 0.50 STUD
-        offers[2]  = Offer(200,   20,    40,  6,   100,  30);  // 2.00% x 6, fee 1.00 STUD
-        offers[3]  = Offer(125,   12,    25,  10,  150,  30);  // 1.25% x 10, fee 1.50 STUD
-        // Tier 1: Steady (60 s).
-        offers[4]  = Offer(350,   35,    70,  2,   0,    60);  // 3.50% x 2
-        offers[5]  = Offer(180,   18,    36,  5,   25,   60);  // 1.80% x 5, fee 0.25 STUD
-        offers[6]  = Offer(70,     7,    14,  12,  50,   60);  // 0.70% x 12, fee 0.50 STUD
-        offers[7]  = Offer(45,     5,    10,  24,  250,  60);  // 0.45% x 24, fee 2.50 STUD
-        // Tier 2: Bargain bin (120 s). Small rates, many rounds, tiny fees.
-        offers[8]  = Offer(150,   15,    30,  3,   0,    120); // 1.50% x 3
-        offers[9]  = Offer(80,     8,    16,  6,   10,   120); // 0.80% x 6, fee 0.10 STUD
-        offers[10] = Offer(40,     4,     8,  12,  25,   120); // 0.40% x 12, fee 0.25 STUD
-        offers[11] = Offer(25,     3,     5,  20,  40,   120); // 0.25% x 20, fee 0.40 STUD
-        for (uint256 i = 0; i < OFFER_COUNT; i++) {
-            require(offers[i].rounds <= MAX_ROUNDS, "Too many rounds");
-            states[i].rate = offers[i].startRate;
-            states[i].rateAt = uint64(block.timestamp);
+    // ---------- game flow ----------
+
+    /// @notice Start a new game (only when no game is running). Round 1 begins now.
+    function startGame() external {
+        if (gameId != 0) require(isOver(gameId), "Game still running");
+        if (gameId != 0) require(games[gameId].finished, "Finish the last game first");
+        require(stud.balanceOf(address(this)) >= PRIZE, "Prize pool empty");
+        gameId += 1;
+        Game storage g = games[gameId];
+        g.startTime = uint64(block.timestamp);
+        g.seed = keccak256(abi.encodePacked(blockhash(block.number - 1), gameId));
+        emit GameStarted(gameId, g.startTime);
+    }
+
+    /// @notice Join the running game. Allowed until round 2 begins.
+    function join() external payable {
+        require(gameId != 0, "No game");
+        require(msg.value == ENTRY_FEE, "Send exactly 0.001 ETH");
+        require(currentRound(gameId) <= 1, "Joining closed");
+        require(!joined[gameId][msg.sender], "Already joined");
+        Game storage g = games[gameId];
+        require(g.playerCount < MAX_PLAYERS, "Game is full");
+        joined[gameId][msg.sender] = true;
+        players[gameId].push(msg.sender);
+        g.playerCount += 1;
+        emit Joined(gameId, msg.sender);
+    }
+
+    /// @notice Pick deal `slot` (0..3) in the current round. One pick per round, final.
+    function pick(uint8 slot) external {
+        require(slot < DEALS, "Unknown deal");
+        require(gameId != 0 && joined[gameId][msg.sender], "Join first");
+        uint256 r = currentRound(gameId);
+        require(r >= 1 && r <= ROUNDS, "No round is open");
+        uint256 ri = r - 1;
+        require(picks[gameId][msg.sender][ri] == 0, "Already picked this round");
+
+        picks[gameId][msg.sender][ri] = slot + 1;
+        uint256 v = dealValue(dealAt(gameId, ri, slot));
+        totalValue[gameId][msg.sender] += v;
+        bool leading = v > bestValue[gameId][ri]; // strictly better only: earlier pick wins ties
+        if (leading) {
+            bestValue[gameId][ri] = v;
+            roundWinner[gameId][ri] = msg.sender;
         }
+        emit Picked(gameId, msg.sender, uint8(ri), slot, v, leading);
     }
 
-    /// @notice Buy one pack through option `offerId` (0..11) by sending exactly PRICE.
-    function buy(uint8 offerId) external payable {
-        require(offerId < OFFER_COUNT, "Unknown offer");
-        require(msg.value == PRICE, "Send exactly 0.001 ETH");
-        require(purchases[msg.sender] < MAX_BUYS, "Wallet limit reached");
+    /// @notice After round 5 ends anyone can finish the game; the contract pays the winner.
+    function finish() external {
+        uint256 id = gameId;
+        require(id != 0 && isOver(id), "Game not over");
+        Game storage g = games[id];
+        require(!g.finished, "Already finished");
+        g.finished = true;
 
-        OfferState storage s = states[offerId];
-        require(block.timestamp >= s.readyAt, "Offer is cooling down");
-
-        Offer memory o = offers[offerId];
-        uint16 rate = currentRate(offerId);
-        uint256 bonusStud = bonusFor(rate, o.rounds, o.feeBps, hasGamePerk(msg.sender));
-        uint256 total = PACK + bonusStud;
-        require(stud.balanceOf(address(this)) >= total, "Shop is out of STUD");
-
-        // effects
-        s.rate = rate > o.minRate + o.decay ? rate - o.decay : o.minRate;
-        s.rateAt = uint64(block.timestamp);
-        s.readyAt = uint64(block.timestamp + o.cooldown);
-        s.sold += 1;
-        s.lastBuyer = msg.sender;
-
-        purchases[msg.sender] += 1;
-        studBought[msg.sender] += total;
-        bonusEarned[msg.sender] += bonusStud;
-        totalPurchases += 1;
-
-        emit Purchased(msg.sender, offerId, total, bonusStud, rate, s.readyAt);
-
-        // interaction
-        require(stud.transfer(msg.sender, total), "STUD transfer failed");
-    }
-
-    /// @notice Compound interest: PACK * (1 + rate)^rounds, minus PACK and the flat fee
-    ///         (never below zero), plus the flat GAME perk when `perk` is true.
-    function bonusFor(uint256 rateBps, uint8 rounds, uint16 feeBps, bool perk) public pure returns (uint256) {
-        uint256 amount = PACK;
-        for (uint256 i = 0; i < rounds; i++) {
-            amount = (amount * (10_000 + rateBps)) / 10_000;
+        for (uint256 r = 0; r < ROUNDS; r++) {
+            address w = roundWinner[id][r];
+            if (w != address(0)) wins[id][w] += 1;
         }
-        uint256 gross = amount - PACK;
-        uint256 fee = (PACK * feeBps) / 10_000;
-        uint256 net = gross > fee ? gross - fee : 0;
-        return perk ? net + (PACK * GAME_PERK) / 10_000 : net;
-    }
-
-    /// @notice Bonus STUD a buyer would get from `offerId` right now.
-    function quote(uint8 offerId, bool perk) external view returns (uint256) {
-        require(offerId < OFFER_COUNT, "Unknown offer");
-        Offer memory o = offers[offerId];
-        return bonusFor(currentRate(offerId), o.rounds, o.feeBps, perk);
-    }
-
-    /// @notice Rate per round a buyer would get right now (stored rate plus idle recovery).
-    function currentRate(uint8 offerId) public view returns (uint16) {
-        OfferState memory s = states[offerId];
-        uint256 regen = ((block.timestamp - s.rateAt) / 60) * REGEN_PER_MINUTE;
-        uint256 r = uint256(s.rate) + regen;
-        uint256 best = offers[offerId].startRate;
-        return uint16(r > best ? best : r);
-    }
-
-    function hasGamePerk(address player) public view returns (bool) {
-        return address(gameToken) != address(0) && gameToken.balanceOf(player) >= GAME_PERK_MIN;
-    }
-
-    function getOffers() external view returns (OfferView[12] memory out) {
-        for (uint8 i = 0; i < OFFER_COUNT; i++) {
-            Offer memory o = offers[i];
-            OfferState memory s = states[i];
-            out[i] = OfferView(
-                currentRate(i), o.startRate, o.decay, o.minRate, o.rounds, o.feeBps,
-                o.cooldown, s.readyAt, s.sold, s.lastBuyer
-            );
+        address[] storage ps = players[id];
+        address best;
+        for (uint256 i = 0; i < ps.length; i++) {
+            address p = ps[i];
+            if (wins[id][p] == 0) continue;
+            if (
+                best == address(0) || wins[id][p] > wins[id][best] ||
+                (wins[id][p] == wins[id][best] && totalValue[id][p] > totalValue[id][best])
+            ) best = p;
         }
+        g.winner = best;
+        uint256 paid;
+        if (best != address(0)) {
+            g.winnerWins = wins[id][best];
+            paid = PRIZE;
+            require(stud.transfer(best, PRIZE), "STUD transfer failed");
+        }
+        emit GameFinished(id, best, g.winnerWins, paid);
     }
 
-    function getPlayer(address player) external view returns (PlayerView memory) {
-        return PlayerView(purchases[player], studBought[player], bonusEarned[player], hasGamePerk(player));
+    // ---------- views ----------
+
+    /// @return 0 = not started, 1..5 = round number, 6 = game over
+    function currentRound(uint256 id) public view returns (uint256) {
+        Game storage g = games[id];
+        if (g.startTime == 0) return 0;
+        uint256 t = block.timestamp - g.startTime;
+        uint256 end;
+        for (uint256 r = 0; r < ROUNDS; r++) {
+            end += roundSeconds[r];
+            if (t < end) return r + 1;
+        }
+        return ROUNDS + 1;
     }
 
-    function stock() external view returns (uint256) {
-        return stud.balanceOf(address(this));
+    function isOver(uint256 id) public view returns (bool) { return currentRound(id) > ROUNDS; }
+
+    /// @notice Timestamp when round `r` (0-based) ends.
+    function roundEnd(uint256 id, uint256 r) public view returns (uint256 end) {
+        end = games[id].startTime;
+        for (uint256 i = 0; i <= r; i++) end += roundSeconds[i];
     }
 
-    // --- owner housekeeping -------------------------------------------------
+    /// @notice The deal shown in position `slot` of round `r` (order is shuffled per game).
+    function dealAt(uint256 id, uint256 r, uint256 slot) public view returns (Deal memory) {
+        uint256 shift = uint256(keccak256(abi.encodePacked(games[id].seed, r))) % DEALS;
+        return base[r][(slot + shift) % DEALS];
+    }
+
+    /// @notice Compound interest: PRINCIPAL * (1 + rate)^periods - PRINCIPAL - fee (min 0).
+    function dealValue(Deal memory d) public pure returns (uint256) {
+        uint256 a = PRINCIPAL;
+        for (uint256 i = 0; i < d.periods; i++) a = (a * (10_000 + d.rate)) / 10_000;
+        uint256 gross = a - PRINCIPAL;
+        uint256 fee = (PRINCIPAL * d.feeBps) / 10_000;
+        return gross > fee ? gross - fee : 0;
+    }
+
+    function getRoundDeals(uint256 id, uint256 r) external view returns (Deal[4] memory out) {
+        for (uint256 s = 0; s < DEALS; s++) out[s] = dealAt(id, r, s);
+    }
+
+    function getPlayers(uint256 id) external view returns (address[] memory) { return players[id]; }
+
+    function getPicks(uint256 id, address p) external view returns (uint8[5] memory) { return picks[id][p]; }
+
+    function getRoundWinners(uint256 id) external view returns (address[5] memory, uint256[5] memory) {
+        return (roundWinner[id], bestValue[id]);
+    }
+
+    function stock() external view returns (uint256) { return stud.balanceOf(address(this)); }
+
+    // ---------- owner ----------
 
     function withdrawEth() external {
         require(msg.sender == owner, "Only owner");
@@ -209,8 +208,10 @@ contract StudRush {
         require(ok, "ETH transfer failed");
     }
 
+    /// @dev Only when no game is mid-way, so a running prize can not be pulled.
     function withdrawStud() external {
         require(msg.sender == owner, "Only owner");
+        require(gameId == 0 || games[gameId].finished, "Game running");
         require(stud.transfer(owner, stud.balanceOf(address(this))), "STUD transfer failed");
     }
 }

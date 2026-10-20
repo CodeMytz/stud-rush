@@ -1,7 +1,7 @@
 {
   "name": "stud-rush",
   "version": "1.0.0",
-  "description": "Stud Rush: a gamified STUD shop on Ethereum Sepolia",
+  "description": "Stud Rush: a compound-interest (salikti procenti) game on Ethereum Sepolia",
   "private": true,
   "scripts": {
     "test": "hardhat test",

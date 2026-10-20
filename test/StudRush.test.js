@@ -2,198 +2,183 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { time } = require("@nomicfoundation/hardhat-network-helpers");
 
-const PRICE = ethers.parseEther("0.001");
-const STUD = (n) => ethers.parseEther(String(n));
-const PACK = STUD(100);
+const FEE = ethers.parseEther("0.001");
+const PRIZE = ethers.parseEther("500");
+const P = 1000n * 10n ** 18n;
+const ROUND_S = [30, 45, 60, 75, 90];
 
-// Option ids: Rush 0-3, Steady 4-7, Bargain bin 8-11.
-const QUICK_FLIP = 0, DOUBLE_UP = 1, SPRINT = 2, BURST = 3;
-const SHORT_HOP = 4, EVEN_KEEL = 5, MARATHON = 7;
-const PENNY_STACK = 8, NICKEL_DRIP = 9, DUST_PILE = 11;
-
-// Same integer maths as the contract: compound the pack, then take off a flat fee.
-function bonusJs(rateBps, rounds, feeBps, perk = false) {
-  let a = PACK;
-  for (let i = 0; i < rounds; i++) a = (a * (10000n + BigInt(rateBps))) / 10000n;
-  const gross = a - PACK;
-  const fee = (PACK * BigInt(feeBps)) / 10000n;
-  const net = gross > fee ? gross - fee : 0n;
-  return perk ? net + PACK / 100n : net;
+// Same integer maths as the contract.
+function valueJs(rate, periods, feeBps) {
+  let a = P;
+  for (let i = 0; i < periods; i++) a = (a * (10000n + BigInt(rate))) / 10000n;
+  const gross = a - P, fee = (P * BigInt(feeBps)) / 10000n;
+  return gross > fee ? gross - fee : 0n;
 }
 
 async function setup() {
   const [owner, alice, bob, carol] = await ethers.getSigners();
   const Token = await ethers.getContractFactory("MockToken");
   const stud = await Token.deploy("STUD", "STUD");
-  const gameTok = await Token.deploy("GAME", "GAME");
-  const Shop = await ethers.getContractFactory("StudRush");
-  const shop = await Shop.deploy(await stud.getAddress(), await gameTok.getAddress());
-  await stud.transfer(await shop.getAddress(), STUD(10000));
-  return { owner, alice, bob, carol, stud, gameTok, shop };
+  const Game = await ethers.getContractFactory("StudRush");
+  const game = await Game.deploy(await stud.getAddress());
+  await stud.transfer(await game.getAddress(), ethers.parseEther("5000"));
+  return { owner, alice, bob, carol, stud, game };
+}
+// Slot of best / worst deal in a round, as the page would work it out.
+async function ranked(game, id, r) {
+  const d = await game.getRoundDeals(id, r);
+  const v = d.map((x) => valueJs(x.rate, x.periods, x.feeBps));
+  const best = v.indexOf(v.reduce((a, b) => (a > b ? a : b)));
+  const worst = v.indexOf(v.reduce((a, b) => (a < b ? a : b)));
+  return { v, best, worst };
+}
+async function toRound(game, id, round) { // round 1..5; jump to its first second
+  const g = await game.games(id);
+  let t = Number(g.startTime) + 1;
+  for (let i = 0; i < round - 1; i++) t += ROUND_S[i];
+  const latest = await time.latest();
+  await time.setNextBlockTimestamp(Math.max(t, latest + 1));
+  await ethers.provider.send("evm_mine", []);
 }
 
-describe("StudRush", () => {
-  it("1. positive: buying pays the compound bonus and records state", async () => {
-    const { shop, stud, alice } = await setup();
-    await expect(shop.connect(alice).buy(QUICK_FLIP, { value: PRICE })).to.emit(shop, "Purchased");
-    expect(await stud.balanceOf(alice.address)).to.equal(STUD("110.25")); // 100 * 1.05^2
-    const p = await shop.getPlayer(alice.address);
-    expect(p.purchases).to.equal(1);
-    expect(p.studBought).to.equal(STUD("110.25"));
-    expect(p.bonusEarned).to.equal(STUD("10.25"));
-    expect(await ethers.provider.getBalance(await shop.getAddress())).to.equal(PRICE);
+describe("StudRush game", () => {
+  it("1. start, join and pick: contract scores the pick with compound interest", async () => {
+    const { game, alice } = await setup();
+    await game.startGame();
+    await game.connect(alice).join({ value: FEE });
+    const { v, best } = await ranked(game, 1, 0);
+    await game.connect(alice).pick(best);
+    expect(await game.totalValue(1, alice.address)).to.equal(v[best]);
+    const [w, bv] = await game.getRoundWinners(1);
+    expect(w[0]).to.equal(alice.address);
+    expect(bv[0]).to.equal(v[best]);
   });
 
-  it("has 3 tiers with 4 options each and the intended locks", async () => {
-    const { shop } = await setup();
-    const o = await shop.getOffers();
-    expect(o.length).to.equal(12);
-    for (let i = 0; i < 12; i++) {
-      const lock = i < 4 ? 30n : i < 8 ? 60n : 120n;
-      expect(o[i].cooldown).to.equal(lock);
-      expect(o[i].rate).to.equal(o[i].startRate);
+  it("2. contract value equals the page formula for every deal of every round", async () => {
+    const { game } = await setup();
+    await game.startGame();
+    for (let r = 0; r < 5; r++) {
+      const d = await game.getRoundDeals(1, r);
+      for (const x of d) expect(await game.dealValue([x.rate, x.periods, x.feeBps])).to.equal(valueJs(x.rate, x.periods, x.feeBps));
     }
   });
 
-  it("on-chain compound maths matches the page formula for every option", async () => {
-    const { shop } = await setup();
-    const o = await shop.getOffers();
-    for (let i = 0; i < 12; i++) {
-      const expected = bonusJs(o[i].rate, o[i].rounds, o[i].feeBps);
-      expect(await shop.quote(i, false)).to.equal(expected);
+  it("3. every round has a unique best deal that is not the highest rate", async () => {
+    const { game } = await setup();
+    await game.startGame();
+    for (let r = 0; r < 5; r++) {
+      const d = await game.getRoundDeals(1, r);
+      const { v, best } = await ranked(game, 1, r);
+      const top = d.reduce((m, x, i) => (x.rate > d[m].rate ? i : m), 0);
+      expect(best).to.not.equal(top);
+      expect(v.filter((x) => x === v[best]).length).to.equal(1);
     }
   });
 
-  it("compound interest beats simple interest: 3% x 4 rounds is 12.5509%, not 12%", async () => {
-    const { shop } = await setup();
-    // 100 * 1.03^4 = 112.550881; minus 0.50 STUD fee
-    expect(await shop.bonusFor(300, 4, 50, false)).to.equal(STUD("12.050881"));
-    expect(await shop.bonusFor(300, 4, 0, false)).to.equal(STUD("12.550881"));
+  it("4. rejects wrong entry fee, double join, unknown deal, pick without join, double pick", async () => {
+    const { game, alice, bob } = await setup();
+    await expect(game.connect(alice).join({ value: FEE })).to.be.revertedWith("No game");
+    await game.startGame();
+    await expect(game.connect(alice).join({ value: 1 })).to.be.revertedWith("Send exactly 0.001 ETH");
+    await game.connect(alice).join({ value: FEE });
+    await expect(game.connect(alice).join({ value: FEE })).to.be.revertedWith("Already joined");
+    await expect(game.connect(bob).pick(0)).to.be.revertedWith("Join first");
+    await expect(game.connect(alice).pick(4)).to.be.revertedWith("Unknown deal");
+    await game.connect(alice).pick(0);
+    await expect(game.connect(alice).pick(1)).to.be.revertedWith("Already picked this round");
   });
 
-  it("the calculation decides: the 'bigger-looking' options are NOT the best in each tier", async () => {
-    const { shop } = await setup();
-    const q = async (i) => shop.quote(i, false);
-    // Rush: simple r*n says Burst (12.5), compounding minus fee says Double Up
-    expect(await q(DOUBLE_UP)).to.be.gt(await q(BURST));
-    expect(await q(DOUBLE_UP)).to.be.gt(await q(SPRINT));
-    expect(await q(DOUBLE_UP)).to.be.gt(await q(QUICK_FLIP));
-    // Steady: simple r*n says Marathon (10.8), real best is Even Keel
-    expect(await q(EVEN_KEEL)).to.be.gt(await q(MARATHON));
-    expect(await q(EVEN_KEEL)).to.be.gt(await q(SHORT_HOP));
-    // Bargain bin: simple r*n says Dust Pile (5.0), real best is Nickel Drip
-    expect(await q(NICKEL_DRIP)).to.be.gt(await q(DUST_PILE));
-    expect(await q(NICKEL_DRIP)).to.be.gt(await q(PENNY_STACK));
+  it("5. picks close when the round timer ends; a new round allows a new pick", async () => {
+    const { game, alice } = await setup();
+    await game.startGame();
+    await game.connect(alice).join({ value: FEE });
+    await toRound(game, 1, 2);
+    await game.connect(alice).pick(0); // round 2 is open, round 1 is gone
+    expect((await game.getPicks(1, alice.address))[0]).to.equal(0);
+    expect((await game.getPicks(1, alice.address))[1]).to.equal(1);
+    await expect(game.connect(alice).join({ value: FEE })).to.be.revertedWith("Joining closed");
   });
 
-  it("2. negative: wrong price and unknown option are rejected", async () => {
-    const { shop, alice } = await setup();
-    await expect(shop.connect(alice).buy(0, { value: 0 })).to.be.revertedWith("Send exactly 0.001 ETH");
-    await expect(shop.connect(alice).buy(0, { value: PRICE * 2n })).to.be.revertedWith("Send exactly 0.001 ETH");
-    await expect(shop.connect(alice).buy(12, { value: PRICE })).to.be.revertedWith("Unknown offer");
-    await expect(shop.quote(12, false)).to.be.revertedWith("Unknown offer");
+  it("6. joining closes when round 2 starts", async () => {
+    const { game, bob } = await setup();
+    await game.startGame();
+    await toRound(game, 1, 2);
+    await expect(game.connect(bob).join({ value: FEE })).to.be.revertedWith("Joining closed");
   });
 
-  it("3. negative: a purchase locks that option for EVERY wallet, other options stay open", async () => {
-    const { shop, alice, bob } = await setup();
-    await shop.connect(alice).buy(DOUBLE_UP, { value: PRICE });
-    await expect(shop.connect(bob).buy(DOUBLE_UP, { value: PRICE })).to.be.revertedWith("Offer is cooling down");
-    await expect(shop.connect(alice).buy(DOUBLE_UP, { value: PRICE })).to.be.revertedWith("Offer is cooling down");
-    await shop.connect(bob).buy(SPRINT, { value: PRICE }); // same tier, different option
-    await shop.connect(bob).buy(EVEN_KEEL, { value: PRICE }); // other tier
-    await time.increase(31);
-    await shop.connect(bob).buy(DOUBLE_UP, { value: PRICE });
+  it("7. better deal wins the round, a tie goes to the earlier pick", async () => {
+    const { game, alice, bob } = await setup();
+    await game.startGame();
+    await game.connect(alice).join({ value: FEE });
+    await game.connect(bob).join({ value: FEE });
+    const { best, worst } = await ranked(game, 1, 0);
+    await game.connect(alice).pick(worst);
+    await game.connect(bob).pick(best);
+    expect((await game.getRoundWinners(1))[0][0]).to.equal(bob.address);
+    await toRound(game, 1, 2);
+    await game.connect(alice).pick(0);
+    await game.connect(bob).pick(0); // same deal, same value
+    expect((await game.getRoundWinners(1))[0][1]).to.equal(alice.address);
   });
 
-  it("rate drops per buy, so the next bonus is recomputed from the new rate", async () => {
-    const { shop, alice, bob } = await setup();
-    const seen = [];
-    for (let i = 0; i < 4; i++) {
-      seen.push((await shop.getOffers())[QUICK_FLIP].rate);
-      await shop.connect(i % 2 ? alice : bob).buy(QUICK_FLIP, { value: PRICE });
-      await time.increase(30);
+  it("8. cannot finish early; winner (most round wins) gets 500 STUD", async () => {
+    const { game, stud, alice, bob } = await setup();
+    await game.startGame();
+    await game.connect(alice).join({ value: FEE });
+    await game.connect(bob).join({ value: FEE });
+    await expect(game.finish()).to.be.revertedWith("Game not over");
+    for (let r = 1; r <= 5; r++) {
+      await toRound(game, 1, r);
+      const { best, worst } = await ranked(game, 1, r - 1);
+      await game.connect(alice).pick(best);           // alice always plays the best deal
+      await game.connect(bob).pick(r === 3 ? best : worst); // bob only ties once (loses on timing)
     }
-    expect(seen).to.deep.equal([500n, 450n, 400n, 350n]); // 5.00% -> 4.50% -> 4.00% -> 3.50%
-    expect(await shop.bonusFor(450, 2, 0, false)).to.equal(bonusJs(450, 2, 0)); // 9.2025%
+    await toRound(game, 1, 5);
+    await time.increase(100);
+    const before = await stud.balanceOf(alice.address);
+    await expect(game.finish()).to.emit(game, "GameFinished").withArgs(1, alice.address, 5, PRIZE);
+    expect((await stud.balanceOf(alice.address)) - before).to.equal(PRIZE);
+    await expect(game.finish()).to.be.revertedWith("Already finished");
   });
 
-  it("rate stops at the floor", async () => {
-    const { shop, alice, bob } = await setup();
-    for (let i = 0; i < 10; i++) {
-      await shop.connect(i % 2 ? alice : bob).buy(QUICK_FLIP, { value: PRICE });
-      await time.increase(30);
+  it("9. tiebreak on round wins uses total value", async () => {
+    const { game, stud, alice, bob } = await setup();
+    await game.startGame();
+    await game.connect(alice).join({ value: FEE });
+    await game.connect(bob).join({ value: FEE });
+    // Bob (picks second) wins rounds 1-2 with the best deal, Alice wins rounds 3-4 (bob picks worst).
+    // Round 5: nobody picks. Both have 2 wins; total value decides.
+    for (let r = 1; r <= 4; r++) {
+      await toRound(game, 1, r);
+      const { best, worst } = await ranked(game, 1, r - 1);
+      if (r <= 2) { await game.connect(alice).pick(worst); await game.connect(bob).pick(best); }
+      else { await game.connect(bob).pick(worst); await game.connect(alice).pick(best); }
     }
-    expect((await shop.getOffers())[QUICK_FLIP].rate).to.equal(100n); // 1.00% floor (+ no recovery within 30 s steps)
+    await time.increase(1000);
+    await game.finish();
+    const g = await game.games(1);
+    const ta = await game.totalValue(1, alice.address), tb = await game.totalValue(1, bob.address);
+    expect(g.winner).to.equal(ta > tb ? alice.address : bob.address);
+    expect(await stud.balanceOf(g.winner)).to.equal(PRIZE);
   });
 
-  it("rate recovers 0.05% per idle minute, up to the starting rate", async () => {
-    const { shop, alice } = await setup();
-    await shop.connect(alice).buy(QUICK_FLIP, { value: PRICE }); // 5.00% -> 4.50% stored
-    await time.increase(2 * 60);
-    expect((await shop.getOffers())[QUICK_FLIP].rate).to.equal(460n); // 450 + 2 * 5
-    await time.increase(3600);
-    expect((await shop.getOffers())[QUICK_FLIP].rate).to.equal(500n); // capped at the start rate
+  it("10. no picks: nobody is paid; a new game can start; old one blocks it until finished", async () => {
+    const { game, stud } = await setup();
+    await game.startGame();
+    await expect(game.startGame()).to.be.revertedWith("Game still running");
+    await time.increase(1000);
+    await expect(game.startGame()).to.be.revertedWith("Finish the last game first");
+    const bal = await stud.balanceOf(await game.getAddress());
+    await game.finish();
+    expect(await stud.balanceOf(await game.getAddress())).to.equal(bal);
+    await game.startGame();
+    expect(await game.gameId()).to.equal(2);
   });
 
-  it("a fee larger than the compound gain never makes the bonus negative", async () => {
-    const { shop } = await setup();
-    expect(await shop.bonusFor(10, 2, 500, false)).to.equal(0n);
-  });
-
-  it("GAME holders get an extra flat 1 STUD", async () => {
-    const { shop, stud, gameTok, alice, bob } = await setup();
-    await gameTok.transfer(alice.address, STUD(1));
-    await shop.connect(alice).buy(QUICK_FLIP, { value: PRICE });
-    await shop.connect(bob).buy(SHORT_HOP, { value: PRICE });
-    expect(await stud.balanceOf(alice.address)).to.equal(STUD("111.25")); // 10.25 + 1
-    expect(await stud.balanceOf(bob.address)).to.equal(PACK + bonusJs(350, 2, 0));
-    expect((await shop.getPlayer(alice.address)).gamePerk).to.equal(true);
-  });
-
-  it("4. negative: wallet limit of 10 packs", async () => {
-    const { shop, alice } = await setup();
-    for (let i = 0; i < 10; i++) {
-      await shop.connect(alice).buy(PENNY_STACK, { value: PRICE });
-      await time.increase(121);
-    }
-    await expect(shop.connect(alice).buy(PENNY_STACK, { value: PRICE })).to.be.revertedWith("Wallet limit reached");
-  });
-
-  it("5. second wallet keeps separate stats", async () => {
-    const { shop, alice, bob } = await setup();
-    await shop.connect(alice).buy(QUICK_FLIP, { value: PRICE });
-    expect((await shop.getPlayer(bob.address)).purchases).to.equal(0);
-    await shop.connect(bob).buy(PENNY_STACK, { value: PRICE });
-    expect((await shop.getPlayer(alice.address)).studBought).to.equal(STUD("110.25"));
-    expect((await shop.getPlayer(bob.address)).studBought).to.equal(PACK + bonusJs(150, 3, 0));
-    expect(await shop.totalPurchases()).to.equal(2);
-  });
-
-  it("6. negative: sold-out shop rejects the purchase", async () => {
-    const { shop, owner, alice } = await setup();
-    await shop.connect(owner).withdrawStud();
-    await expect(shop.connect(alice).buy(0, { value: PRICE })).to.be.revertedWith("Shop is out of STUD");
-  });
-
-  it("only the owner can withdraw; owner gets ETH and STUD back", async () => {
-    const { shop, stud, owner, alice } = await setup();
-    await shop.connect(alice).buy(0, { value: PRICE });
-    await expect(shop.connect(alice).withdrawEth()).to.be.revertedWith("Only owner");
-    await expect(shop.connect(alice).withdrawStud()).to.be.revertedWith("Only owner");
-    await expect(shop.connect(owner).withdrawEth()).to.changeEtherBalance(owner, PRICE, { includeFee: false });
-    await shop.connect(owner).withdrawStud();
-    expect(await stud.balanceOf(await shop.getAddress())).to.equal(0);
-  });
-
-  it("constructor rejects bad token addresses; GAME may be disabled", async () => {
-    const [, alice] = await ethers.getSigners();
-    const Shop = await ethers.getContractFactory("StudRush");
-    await expect(Shop.deploy(ethers.ZeroAddress, ethers.ZeroAddress)).to.be.revertedWith("STUD address invalid");
-    await expect(Shop.deploy(alice.address, ethers.ZeroAddress)).to.be.revertedWith("STUD address invalid");
-    const Token = await ethers.getContractFactory("MockToken");
-    const stud = await Token.deploy("STUD", "STUD");
-    await expect(Shop.deploy(await stud.getAddress(), alice.address)).to.be.revertedWith("GAME address invalid");
-    const shop = await Shop.deploy(await stud.getAddress(), ethers.ZeroAddress);
-    expect(await shop.hasGamePerk(alice.address)).to.equal(false);
+  it("11. owner-only withdrawals, and STUD is locked while a game runs", async () => {
+    const { game, alice } = await setup();
+    await game.startGame();
+    await expect(game.connect(alice).withdrawEth()).to.be.revertedWith("Only owner");
+    await expect(game.withdrawStud()).to.be.revertedWith("Game running");
   });
 });
