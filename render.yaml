@@ -1,5 +1,6 @@
 services:
   - type: web
-    name: stud-rush
+    name: yield-arena
     runtime: static
-    staticPublishPath: .
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist

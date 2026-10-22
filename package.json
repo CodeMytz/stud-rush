@@ -1,19 +1,26 @@
 {
-  "name": "stud-rush",
+  "name": "yield-arena",
   "version": "1.0.0",
-  "description": "Stud Rush: a compound-interest (salikti procenti) game on Ethereum Sepolia",
+  "description": "Yield Arena: a compound-interest game on Ethereum Sepolia (STUD entry)",
   "private": true,
   "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "test": "hardhat test",
-    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
-    "start": "npx --yes serve -l 8080 ."
-  },
-  "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^6.1.2",
-    "@openzeppelin/contracts": "^5.6.1",
-    "hardhat": "^2.29.1"
+    "compile": "hardhat compile",
+    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia"
   },
   "dependencies": {
-    "dotenv": "^18.0.8"
+    "ethers": "^6.14.0"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
+    "@openzeppelin/contracts": "^5.4.0",
+    "@sveltejs/vite-plugin-svelte": "^5.0.3",
+    "dotenv": "^16.4.7",
+    "hardhat": "^2.26.0",
+    "svelte": "^5.20.0",
+    "vite": "^6.2.0"
   }
 }

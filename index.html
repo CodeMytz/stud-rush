@@ -1,102 +1,15 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script>
-    (function () {
-      var t;
-      try { t = localStorage.getItem("studrush:theme"); } catch (e) {}
-      if (t !== "light" && t !== "dark") t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-      document.documentElement.dataset.theme = t;
-    })();
-  </script>
-  <title>Stud Rush | Compound interest game on Sepolia</title>
-  <meta name="description" content="Five timed rounds. Pick the deal with the best compound interest (salikti procenti). Most round wins takes the STUD prize.">
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <header class="topbar">
-    <div class="wrap bar">
-      <div class="brand">Stud&nbsp;Rush</div>
-      <div class="walletbox">
-        <span id="netBadge" class="badge off">Not connected</span>
-        <span id="acct" class="acct" hidden></span>
-        <button id="themeBtn" class="iconbtn" type="button" aria-label="Switch theme" title="Switch theme">
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="1.5"></circle><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
-        </button>
-        <button id="connectBtn" class="btn primary" type="button">Connect MetaMask</button>
-      </div>
-    </div>
-  </header>
-
-  <main class="wrap">
-    <div id="banner" class="banner" hidden></div>
-
-    <section class="card intro">
-      <h1>Stud Rush</h1>
-      <p>
-        <b>5 rounds, 4 deals per round, 1 pick per round.</b> Each deal grows <b>1000 points</b> with
-        <b>compound interest (salikti procenti)</b> and then a flat fee is taken off. The cards show only the rate,
-        the periods and the fee, <b>you do the maths</b>. The contract scores every pick and the best deal of the round wins it.
-        After round 5 the player with the <b>most round wins</b> gets <b id="prizeTxt">500 STUD</b>.
-      </p>
-      <p class="formula mono">value = 1000 &times; (1 + rate)<sup>periods</sup> &minus; 1000 &minus; fee</p>
-      <p class="small muted">
-        Round timers: 30 s, 45 s, 60 s, 75 s, 90 s. Entry 0.001 ETH (Sepolia test ETH, no value). Joining closes when round 2 starts.
-        Tiebreak: higher total value, then ties on a single round go to the earlier pick.
-        <span id="links"></span>
-      </p>
-    </section>
-
-    <section class="card" id="stage">
-      <div class="boardhead">
-        <h2 id="stageTitle">Game</h2>
-        <span id="timer" class="timer mono">--:--</span>
-      </div>
-      <div class="track"><div id="bar" class="fill" style="width:0"></div></div>
-      <p id="stageMsg" class="muted">Connect your wallet to play.</p>
-      <div class="actions">
-        <button id="startBtn" class="btn primary" type="button" hidden>Start new game</button>
-        <button id="joinBtn" class="btn primary" type="button" hidden>Join (0.001 ETH)</button>
-        <button id="finishBtn" class="btn primary" type="button" hidden>Finish game and pay winner</button>
-      </div>
-      <div id="deals" class="grid four" hidden></div>
-    </section>
-
-    <section class="card">
-      <h2>Rounds</h2>
-      <div id="rounds" class="rounds"></div>
-    </section>
-
-    <section class="card">
-      <h2>Players</h2>
-      <div id="players" class="muted">No players yet.</div>
-    </section>
-
-    <section class="card mathcard">
-      <h2>Math corner</h2>
-      <p class="small muted">Practice calculator (not sent anywhere). Adding rate &times; periods (simple interest) gives the wrong ranking on purpose.</p>
-      <div class="calcrow">
-        <label>Rate %<input id="cRate" type="number" step="0.01" value="5"></label>
-        <label>Periods<input id="cN" type="number" step="1" min="1" value="3"></label>
-        <label>Fee (points)<input id="cFee" type="number" step="1" min="0" value="0"></label>
-      </div>
-      <p id="cOut" class="calcout mono"></p>
-    </section>
-
-    <section id="txCard" class="card txcard" hidden>
-      <p id="txMsg"></p>
-      <p id="txLink" class="small"></p>
-    </section>
-  </main>
-
-  <footer class="footer wrap small muted">
-    <p>Learning project. Ethereum Sepolia (chain ID 11155111), Solidity ^0.8.27, ethers.js v6. Not audited.</p>
-  </footer>
-
-  <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
-  <script>window.ethers || document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"><\/script>');</script>
-  <script src="game.js"></script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="description" content="Yield Arena: pick the best compound-interest deal in five timed rounds. Ethereum Sepolia testnet game." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%232dd4a7'/%3E%3Cpath d='M6 22 12 15l5 4 9-11' fill='none' stroke='%23052018' stroke-width='3'/%3E%3C/svg%3E" />
+    <title>Yield Arena</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
 </html>
