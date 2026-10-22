@@ -7,6 +7,8 @@ import { roundAt, same } from "./format.js";
 
 export const CHAIN_ID = deployment.chainId;
 export const CONTRACT = deployment.address;
+// Uniswap swap page: SepoliaETH -> STUD (address comes from deployment.json, so it always matches the game).
+export const BUY_URL = `https://app.uniswap.org/swap?chain=sepolia&inputCurrency=NATIVE&outputCurrency=${(deployment.stud || "").toLowerCase()}`;
 export const EXPLORER = import.meta.env.VITE_EXPLORER || "https://sepolia.etherscan.io";
 const READ_RPC = import.meta.env.VITE_READ_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
 const POLL_MS = 3000;
