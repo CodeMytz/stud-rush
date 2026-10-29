@@ -1,17 +1,3 @@
-# Yield Arena
-
-Compound-interest duel game on **Ethereum Sepolia** (chain 11155111). Svelte 5 + Vite front end, Solidity game contract, ethers.js v6.
-
-## Rules
-- **Create / Join:** 50 STUD each (approve + transferFrom). The lobby has **no timer**: it waits for players (max 16).
-- **Start:** the host presses *Start game* once **at least 2 players** have joined. A full lobby of 16 starts by itself.
-- **Leave / Cancel:** before the start, a joiner can *Leave* and the host can *Cancel game*. STUD is refunded.
-- **5 rounds** (120/90/75/60/45 s), 4 deals each, **one pick per round**.
-- **Early finish:** when every player has picked, the round ends immediately and the next one starts.
-- `value = 1000 × (1 + rate)^periods − 1000 − fee`. The contract scores every pick; the best deal wins the round (ties: earlier pick).
-- **Winner** (most round wins, then total value, then join order) takes the whole pot. If nobody picked, everyone is refunded.
-- Stored on-chain per wallet: game score, round wins, lifetime `score` and `gamesWon`.
-
 ## Setup
 ```bash
 npm install
